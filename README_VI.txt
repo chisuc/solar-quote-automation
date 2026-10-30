@@ -1,20 +1,23 @@
-SOLAR QUOTE AUTOMATION - ONLINE MVP V1
+SOLAR QUOTE AUTOMATION - BẢN DÙNG RENDER FREE + SUPABASE FREE
 
-CHUC NANG: dang nhap quan tri; tao/luu/mo/xoa du an tren may chu; nhap khach hang, cong trinh, cau hinh PV/inverter/pin, dien nang va gia; tinh kWp, dung luong pin, VAT; upload va tai lai PDF/Excel/CSV/anh/Word; xuat JSON.
+1) Cập nhật toàn bộ repository GitHub bằng các file trong gói này:
+   - app/main.py (giữ thư mục app)
+   - requirements.txt
+   - render.yaml
+   - supabase_setup.sql (thêm file ở thư mục gốc)
+2) Trong Supabase > SQL Editor > New query: mở supabase_setup.sql, dán toàn bộ SQL và nhấn Run.
+3) Kiểm tra Storage bucket tên customer-files tồn tại và Public bucket đang OFF.
+4) Trên Render, tạo Web Service từ repository, chọn Free. Thêm Environment Variables:
+   ADMIN_USER=admin
+   ADMIN_PASSWORD=<tự đặt mật khẩu đăng nhập mạnh>
+   SESSION_SECRET=<chuỗi ngẫu nhiên dài>
+   COOKIE_SECURE=true
+   SUPABASE_URL=https://<project-ref>.supabase.co
+   SUPABASE_SECRET_KEY=<secret key của Supabase>
+   SUPABASE_BUCKET=customer-files
+   Không đưa secret key vào GitHub, không chia sẻ secret key qua chat.
+5) Deploy. Dùng URL Render để đăng nhập.
 
-DEPLOY RENDER:
-1. Tao tai khoan GitHub va Render.
-2. Tao repository GitHub moi, upload toan bo noi dung thu muc nay (giu nguyen app/main.py).
-3. Render Dashboard > New > Blueprint, ket noi repository.
-4. Render doc render.yaml; xac nhan tao service.
-5. Khi duoc yeu cau, dat ADMIN_PASSWORD manh, rieng biet (toi thieu 16 ky tu).
-6. Cho deploy thanh cong, mo URL onrender.com.
-7. Ten dang nhap mac dinh admin; dung mat khau ADMIN_PASSWORD da cai.
+LƯU Ý: Render Free có thể sleep khi không hoạt động và cold start. Supabase Free có giới hạn dung lượng/traffic và chính sách tạm dừng project khi không hoạt động. Nên xuất dữ liệu/backup định kỳ.
 
-CHI PHI / LUU TRU:
-- render.yaml chon Starter web service va persistent disk 1GB; day la dich vu co phi. Kiem tra gia hien hanh truoc khi xac nhan.
-- Persistent disk giu SQLite va file upload qua deploy. Khong xoa disk hoac doi DATA_DIR sau khi co du lieu.
-- Sao luu du lieu dinh ky.
-- MVP chi co mot tai khoan quan tri dung chung; chua co tai khoan rieng/phan quyen nhan vien.
-- Chua co OCR hoa don, phu tai 30 phut, NPV/IRR, Excel/PPTX, ghep PDF.
-- Tuyet doi khong dua mat khau/SESSION_SECRET len GitHub.
+Tài khoản đăng nhập website: ADMIN_USER / ADMIN_PASSWORD do bạn tự cấu hình trong Render.
