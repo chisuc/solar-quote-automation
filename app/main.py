@@ -151,7 +151,7 @@ async def upload(pid:str,request:Request,files:list[UploadFile]=File(...)):
         if len(data)>20*1024*1024: raise HTTPException(413,"Mỗi file tối đa 20 MB")
         fid=str(uuid.uuid4()); path=storage_path(pid,fid,name)
         content_type=f.content_type or mimetypes.guess_type(name)[0] or "application/octet-stream"
-        sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),content=data,headers={"Content-Type":content_type,"x-upsert":"false"})
+        sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),data=data,headers={"Content-Type":content_type,"x-upsert":"false"})
         try:
             sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":name,"path":path},headers={"Prefer":"return=minimal"})
         except Exception:
