@@ -77,14 +77,14 @@ def health():
     return {"status":"ok","storage":"supabase"}
 
 @app.get("/login-page",response_class=HTMLResponse)
-def login_page(): return LOGIN.format("")
+def login_page(): return LOGIN.replace("{}", "")
 
 @app.post("/login")
 async def login(request:Request,username:str=Form(...),password:str=Form(...)):
     if username==USER and PASS and hmac.compare_digest(password,PASS):
         request.session.clear(); request.session["user"]=USER
         return RedirectResponse("/",status_code=303)
-    return HTMLResponse(LOGIN.format("<p style='color:red'>Sai tài khoản hoặc mật khẩu</p>"),status_code=401)
+    return HTMLResponse(LOGIN.replace("{}", "<p style='color:red'>Sai tài khoản hoặc mật khẩu</p>"),status_code=401)
 
 @app.post("/logout")
 async def logout(request:Request):
