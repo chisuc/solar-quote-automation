@@ -319,7 +319,7 @@ async def create_financial_report(pid:str,request:Request):
         raise HTTPException(404,"Không tìm thấy dự án.")
     saved=project[0].get("payload") or {}
     p=body.get("payload") or saved
-    overrides=p.get("financialOverrides") or saved.get("financialOverrides") or {}
+    overrides=(p.get("financialOverrides") if "financialOverrides" in p else saved.get("financialOverrides")) or {}
     try:
         original=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(FINANCIAL_TEMPLATE_PATH,safe="/")).content
     except HTTPException as exc:
@@ -348,7 +348,7 @@ async def create_financial_report(pid:str,request:Request):
             self_ratio=raw_self/100 if raw_self is not None else None
         if self_ratio is not None:
             if not 0<=float(self_ratio)<=1: raise HTTPException(400,"Tỷ lệ tiêu thụ điện phải từ 0 đến 100%.")
-            inp["C8"]=float(self_ratio); present["S48"]=float(self_ratio)
+            inp["C8"]=float(self_ratio)
         monthly=(p.get("pvwattsResult") or {}).get("monthly") or []
         if len(monthly)==12:
             for i,value in enumerate(monthly,11):
