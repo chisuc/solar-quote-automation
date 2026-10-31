@@ -1,10 +1,10 @@
 services:
   - type: web
     name: solar-quote-automation
-    runtime: python
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
-    buildCommand: apt-get update && apt-get install -y libreoffice && command -v libreoffice && libreoffice --version && pip install -r requirements.txt && python -m playwright install --with-deps chromium
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: ADMIN_USER
