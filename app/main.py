@@ -333,15 +333,56 @@ async def capture_global_solar_atlas(pid:str,request:Request):
         print(f"Global Solar Atlas capture error: {type(exc).__name__}: {exc}",flush=True)
         raise HTTPException(502,f"Global Solar Atlas capture failed: {type(exc).__name__}: {str(exc)[:350]}")
     
+@app.get("/api/folders")
+def folders(request:Request):
+    auth(request)
+    rows=sb_request("GET",db("projects"),params={"select":"id,name,payload,updated","order":"updated.desc"}).json()
+    return [{"id":r["id"],"name":(r.get("payload") or {}).get("folderName") or r.get("name") or "Thư mục","date":(r.get("payload") or {}).get("folderDate",""),"updated":r.get("updated")} for r in rows if (r.get("payload") or {}).get("_recordType")=="folder"]
+
+@app.post("/api/folders")
+async def create_folder(request:Request):
+    auth(request); p=await request.json()
+    name=str(p.get("name") or "").strip()
+    folder_date=str(p.get("date") or datetime.now().astimezone().date().isoformat())
+    if not name: raise HTTPException(400,"Vui lòng nhập tên thư mục.")
+    if len(name)>120: raise HTTPException(400,"Tên thư mục tối đa 120 ký tự.")
+    fid=str(uuid.uuid4()); now=datetime.now(timezone.utc).isoformat()
+    payload={"_recordType":"folder","folderName":name,"folderDate":folder_date}
+    sb_request("POST",db("projects"),json={"id":fid,"name":name,"customer":"","payload":payload,"updated":now},headers={"Prefer":"return=minimal"})
+    return {"id":fid,"name":name,"date":folder_date}
+
+@app.get("/api/folders/{fid}/projects")
+def folder_projects(fid:str,request:Request):
+    auth(request)
+    rows=sb_request("GET",db("projects"),params={"select":"id,name,customer,updated,payload","order":"updated.desc"}).json()
+    return [{"id":r["id"],"name":r.get("name"),"customer":r.get("customer"),"updated":r.get("updated")} for r in rows if (r.get("payload") or {}).get("folderId")==fid and (r.get("payload") or {}).get("_recordType")!="folder"]
+
+@app.delete("/api/folders/{fid}")
+def delete_folder(fid:str,request:Request):
+    auth(request)
+    rows=sb_request("GET",db("projects"),params={"select":"id,payload"}).json()
+    child=[r["id"] for r in rows if (r.get("payload") or {}).get("folderId")==fid and (r.get("payload") or {}).get("_recordType")!="folder"]
+    for pid in child:
+        ups=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"path"}).json()
+        if ups: sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[x["path"] for x in ups]})
+        sb_request("DELETE",db("uploads"),params={"pid":f"eq.{pid}"})
+        sb_request("DELETE",db("projects"),params={"id":f"eq.{pid}"})
+    sb_request("DELETE",db("projects"),params={"id":f"eq.{fid}"})
+    return {"ok":True,"deleted_projects":len(child)}
+
 @app.get("/api/projects")
 def projects(request:Request):
     auth(request)
-    r=sb_request("GET",db("projects"),params={"select":"id,name,customer,updated","order":"updated.desc"})
-    return r.json()
+    r=sb_request("GET",db("projects"),params={"select":"id,name,customer,updated,payload","order":"updated.desc"})
+    return [x for x in r.json() if (x.get("payload") or {}).get("_recordType")!="folder"]
 
 @app.post("/api/projects")
 async def create(request:Request):
     auth(request); p=await request.json()
+    folder_id=p.get("folderId")
+    if not folder_id: raise HTTPException(400,"Vui lòng mở thư mục trước khi tạo dự án.")
+    frows=sb_request("GET",db("projects"),params={"id":f"eq.{folder_id}","select":"id,payload"}).json()
+    if not frows or (frows[0].get("payload") or {}).get("_recordType")!="folder": raise HTTPException(404,"Không tìm thấy thư mục.")
     pid=str(uuid.uuid4()); now=datetime.now(timezone.utc).isoformat()
     name=p.get("projectName") or p.get("customer") or "Dự án mới"
     row={"id":pid,"name":name,"customer":p.get("customer",""),"payload":p,"updated":now}
@@ -353,7 +394,7 @@ def get_project(pid:str,request:Request):
     auth(request)
     r=sb_request("GET",db("projects"),params={"id":f"eq.{pid}","select":"id,payload"})
     rows=r.json()
-    if not rows: raise HTTPException(404,"Không tìm thấy dự án")
+    if not rows or (rows[0].get("payload") or {}).get("_recordType")=="folder": raise HTTPException(404,"Không tìm thấy dự án")
     return {"id":rows[0]["id"],"payload":rows[0]["payload"]}
 
 @app.put("/api/projects/{pid}")
