@@ -7,6 +7,10 @@ from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.middleware.sessions import SessionMiddleware
 from openpyxl import load_workbook
+from pypdf import PdfReader
+from PIL import Image
+import pytesseract
+from pdf2image import convert_from_bytes
 
 USER=os.getenv("ADMIN_USER","admin")
 PASS=os.getenv("ADMIN_PASSWORD","")
@@ -77,6 +81,35 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <section id="folderView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolders()">← Tất cả thư mục</button><div><b id="folderViewTitle">📁 Thư mục</b><div class="muted" id="folderViewDate"></div></div></div><div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">Dự án trong thư mục</h3><p class="muted">Mở dự án đã lưu hoặc bắt đầu tạo dự án mới.</p></div><button class="btn" type="button" onclick="startProject()">＋ Bắt đầu tạo dự án</button></div><div id="folderProjectList" style="margin-top:14px"></div></div></section>
 <section id="editorView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolder()">← Quay lại thư mục</button><div><b id="currentFolderTitle">Thư mục dự án</b><div class="muted" id="currentFolderDate"></div></div></div>
 <h1>Trung tâm báo giá điện mặt trời</h1><p class='muted'>Website MVP · Dữ liệu lưu trên máy chủ</p>
+<div class='panel' id='loadSizingPanel' style='border:2px solid #cfe3d8'>
+<h3>⚡ Tính toán công suất dự kiến</h3>
+<p class='muted'>Tải hóa đơn điện PDF/ảnh hoặc nhập số liệu thủ công. Website tính điện năng ngày/đêm và đề xuất sơ bộ công suất PV, dung lượng pin lưu trữ.</p>
+<div class='grid'>
+<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện (PDF, JPG, PNG, WEBP)</label><div class='row'><input id='billFile' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' style='max-width:420px'><button class='btn alt' type='button' onclick='readBill()'>Đọc hóa đơn</button><span id='billReadStatus' class='muted'></span></div></div>
+<div class='field'><label>Tổng điện năng hóa đơn (kWh)</label><input id='billMonthKwh' type='number' min='0' step='.01' placeholder='Nhập hoặc kiểm tra số đọc được'></div>
+<div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
+<div class='field'><label>Tỷ lệ tiêu thụ ban ngày (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
+<div class='field'><label>Tỷ lệ tiêu thụ ban đêm (%)</label><input id='billNightShare' type='number' readonly value='35'></div>
+<div class='field'><label>Mức đáp ứng điện ban ngày bằng PV (%)</label><input id='billPvCoverage' type='number' min='0' max='100' step='1' value='80'></div>
+<div class='field'><label>Mức đáp ứng điện ban đêm bằng pin (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='70'></div>
+<div class='field'><label>Số giờ nắng đỉnh PSH (h/ngày)</label><input id='billPsh' type='number' min='.5' max='8' step='.1' value='4'></div>
+<div class='field'><label>Hiệu suất hệ thống PR (%)</label><input id='billPr' type='number' min='50' max='95' step='1' value='80'></div>
+<div class='field'><label>Độ sâu xả pin DoD (%)</label><input id='billDod' type='number' min='50' max='100' step='1' value='90'></div>
+<div class='field'><label>Hiệu suất xả/chu trình pin (%)</label><input id='billBattEff' type='number' min='50' max='100' step='1' value='90'></div>
+</div>
+<div class='row'><button class='btn' type='button' onclick='calculateLoadSizing()'>Tính điện năng & đề xuất</button><button class='btn alt' type='button' onclick='applyLoadSizing()'>Áp dụng vào cấu hình dự án</button></div>
+<div id='loadSizingStatus' class='muted'>Chưa tính toán.</div>
+<div id='loadSizingResults' style='display:none;margin-top:14px'>
+<div class='grid'>
+<div class='gsa-card'><div class='muted'>Tổng điện năng trung bình</div><h2 id='resDaily' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
+<div class='gsa-card'><div class='muted'>Điện năng ban ngày</div><h2 id='resDay' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
+<div class='gsa-card'><div class='muted'>Điện năng ban đêm</div><h2 id='resNight' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
+<div class='gsa-card'><div class='muted'>Công suất PV đề xuất</div><h2 id='resPv' style='margin:7px 0;color:#16845b'>—</h2><div class='muted'>kWp DC</div></div>
+<div class='gsa-card'><div class='muted'>Dung lượng pin đề xuất</div><h2 id='resBattery' style='margin:7px 0;color:#16845b'>—</h2><div class='muted'>kWh danh định</div></div>
+<div class='gsa-card'><div class='muted'>Điện năng cần pin cấp ban đêm</div><h2 id='resNightSupply' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
+</div>
+<p class='muted' id='loadSizingAssumptions' style='margin-top:10px'></p>
+</div></div>
 <div class='panel'><h3>Khách hàng & công trình</h3><div class='grid'><div class='field'><label>Tên dự án</label><input id='projectName'></div><div class='field'><label>Khách hàng / công ty</label><input id='customer'></div><div class='field'><label>Người liên hệ</label><input id='contact'></div><div class='field'><label>Số điện thoại</label><input id='phone'></div><div class='field'><label>Địa điểm công trình</label><input id='address'></div><div class='field'><label>Ngày báo giá</label><input id='date' type='date'></div><div class='field'><label>Ngày hiệu lực báo giá (để trống = +7 ngày)</label><input id='quoteValidUntil' type='date'></div><div class='field'><label>Ngành nghề</label><input id='industry' placeholder='Ví dụ: Sản xuất bao bì'></div><div class='field'><label>Diện tích mái (m²)</label><input id='roof' type='number'></div><div class='field'><label>Bức xạ (kWh/m²/năm)</label><input id='solarRadiation' type='number' step='.1'></div><div class='field'><label>Kết cấu mái</label><input id='roofType' placeholder='Ví dụ: Kèo thép, xà gồ C'></div><div class='field'><label>Điều kiện mái</label><input id='roofCondition' placeholder='Ví dụ: Mái mới, không dột'></div><div class='field'><label>Thói quen dùng điện</label><textarea id='usagePattern' rows='2' style='width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:7px' placeholder='Ví dụ: Hoạt động 2 ca, từ 7h đến 22h; nghỉ Chủ nhật...'></textarea></div></div></div>
 <div class='panel'><h3>Cấu hình hệ thống</h3><div class='grid'><div class='field'><label>Thương hiệu tấm pin</label><input id='panelBrand'></div><div class='field'><label>Công suất tấm pin (Wp)</label><input id='panelW' type='number' value='625'></div><div class='field'><label>Số lượng tấm</label><input id='panelQty' type='number' value='30'></div><div class='field'><label>Công suất PV (kWp)</label><input id='pv' readonly></div><div class='field'><label>Inverter / Model</label><input id='invModel'></div><div class='field'><label>Công suất inverter (kW)</label><input id='invKw' type='number'></div><div class='field'><label>Số pha</label><select id='phase'><option>1 pha</option><option>3 pha</option></select></div><div class='field'><label>Pin lưu trữ / Model</label><input id='batModel'></div><div class='field'><label>Dung lượng mỗi bộ (kWh)</label><input id='batKwh' type='number' step='.01'></div><div class='field'><label>Số lượng bộ pin</label><input id='batQty' type='number' value='0'></div><div class='field'><label>Tổng dung lượng pin (kWh)</label><input id='batTotal' readonly></div></div></div>
 <div class='panel'><h3>Điện năng & báo giá</h3><div class='grid'><div class='field'><label>Tiêu thụ tháng (kWh)</label><input id='load' type='number'></div><div class='field'><label>Sản lượng ĐMT năm (kWh)</label><input id='annual' type='number'></div><div class='field'><label>Tự tiêu thụ dự kiến (%)</label><input id='self' type='number' value='80'></div><div class='field'><label>Giá điện trung bình có VAT (đ/kWh)</label><input id='price' type='number'></div><div class='field'><label>Tổng trước VAT (VNĐ)</label><input id='pre' type='number'></div><div class='field'><label>VAT (%)</label><input id='vat' type='number' value='8'></div><div class='field'><label>Tiền VAT</label><input id='vatMoney' readonly></div><div class='field'><label>Tổng sau VAT</label><input id='grand' readonly></div></div></div>
@@ -117,7 +150,7 @@ async function uploadPresentationTemplate(){let f=$('presentationTemplateFile').
 async function generatePresentationReport(){if(!pid){$('presentationStatus').textContent='Hãy lưu dự án trước khi xuất PowerPoint.';return}try{$('presentationStatus').textContent='Đang tạo PowerPoint theo form gốc...';let r=await api('/api/projects/'+pid+'/presentation-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:payload()})});$('presentationStatus').innerHTML='Đã xuất báo giá: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('presentationStatus').textContent='Không xuất được PowerPoint: '+e.message}}
 
 
-function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.financialOverrides=financialOverrides;o.financialReportId=financialReportId;o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;o.gsaImages=gsaImages;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined)$(k).value=o[k]});financialOverrides=o.financialOverrides||{};financialReportId=o.financialReportId||null;showFinancialOverrides();pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;gsaImages=o.gsaImages||[];renderGSAImages();renderPV();calc()}
+function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.loadSizingResult=loadSizingResult;o.financialOverrides=financialOverrides;o.financialReportId=financialReportId;o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;o.gsaImages=gsaImages;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined)$(k).value=o[k]});loadSizingResult=o.loadSizingResult||null;if(loadSizingResult){$('billMonthKwh').value=loadSizingResult.monthlyKwh||'';$('billDays').value=loadSizingResult.billDays||30;$('billDayShare').value=loadSizingResult.dayShare||65;calcBillNightShare();calculateLoadSizing()}financialOverrides=o.financialOverrides||{};financialReportId=o.financialReportId||null;showFinancialOverrides();pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;gsaImages=o.gsaImages||[];renderGSAImages();renderPV();calc()}
 $('albedoMode').addEventListener('change',()=>{$('albedoField').style.display=$('albedoMode').value==='manual'?'block':'none'});
 let compassAngle=180,azimuthConfirmed=true;
 function normAngle(v){return ((v%360)+360)%360}
@@ -139,6 +172,51 @@ function renderGSAImages(){if(!gsaImages||!gsaImages.length){$('gsaResult').styl
 async function captureGlobalSolarAtlas(){try{if(!parseCoordinates())throw Error('Vui lòng kiểm tra tọa độ.');if(!pid)throw Error('Trước tiên hãy lưu dự án bằng nút Lưu dự án.');let b=$('gsaCaptureBtn');b.disabled=true;b.textContent='Đang mở Atlas và chụp ảnh...';$('gsaStatus').textContent='Đang khởi chạy trình duyệt tự động. Có thể mất 1–2 phút.';let r=await api('/api/projects/'+pid+'/gsa-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat:n('lat'),lon:n('lon')})});gsaImages=r.images||[];renderGSAImages();$('gsaStatus').textContent='Đã chụp và lưu '+gsaImages.length+' ảnh vào dự án.';await listFiles()}catch(e){$('gsaStatus').textContent='Chưa hoàn tất: '+e.message}finally{$('gsaCaptureBtn').disabled=false;$('gsaCaptureBtn').textContent='Tự động lấy 4 hình ảnh'}}
 function renderPV(){if(!pvwattsResult){$('pvResult').textContent='Chưa có kết quả mô phỏng.';$('pvChart').style.display='none';return}let a=pvwattsResult.monthly||[];$('pvResult').innerHTML='<b>Sản lượng AC năm: '+Number(pvwattsResult.annual||0).toLocaleString('vi-VN',{maximumFractionDigits:0})+' kWh</b><br>'+a.map((v,i)=>['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'][i]+': '+Number(v).toLocaleString('vi-VN',{maximumFractionDigits:0})+' kWh').join(' · ')+'<br><small>Trạm thời tiết: '+esc(pvwattsResult.station||'Chưa có thông tin')+'</small>';drawPVChart(a)}
 async function runPVWatts(){try{if(!parseCoordinates())throw Error('Vui lòng kiểm tra lại tọa độ công trình.');if(!azimuthConfirmed)throw Error('Bạn hãy nhấn Xác nhận hướng trên la bàn trước khi tính toán.');$('pvStatus').textContent='Đang kết nối PVWatts...';let body={lat:n('lat'),lon:n('lon'),system_capacity:n('pvSystemSize')||n('pv'),module_type:n('moduleType'),array_type:n('arrayType'),tilt:n('tilt'),azimuth:n('azimuth'),losses:n('losses'),dc_ac_ratio:n('dcAcRatio'),inv_eff:n('invEff'),gcr:n('gcr'),use_wf_albedo:$('albedoMode').value==='weather'?1:0};if($('albedoMode').value==='manual')body.albedo=n('albedo');let r=await api('/api/pvwatts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});pvwattsResult=r;$('annual').value=Math.round(r.annual||0);$('pvStatus').textContent='Mô phỏng thành công · PVWatts V'+r.version;renderPV()}catch(e){$('pvStatus').textContent='Không lấy được dữ liệu: '+e.message}}
+
+let loadSizingResult=null;
+function calcBillNightShare(){let d=Math.max(0,Math.min(100,n('billDayShare')));$('billNightShare').value=(100-d).toFixed(1);if($('billNightShare').value.endsWith('.0'))$('billNightShare').value=(100-d).toFixed(0)}
+function calculateLoadSizing(){
+  const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
+  if(monthly<=0||days<=0)throw new Error('Nhập tổng điện năng hóa đơn và số ngày hợp lệ.');
+  if(dayShare<0||dayShare>100)throw new Error('Tỷ lệ ban ngày phải từ 0 đến 100%.');
+  const daily=monthly/days,day=daily*dayShare/100,night=daily-day;
+  const psh=n('billPsh'),pr=n('billPr')/100,pvCoverage=n('billPvCoverage')/100,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,eff=n('billBattEff')/100;
+  if(psh<=0||pr<=0||dod<=0||eff<=0)throw new Error('Kiểm tra lại các giả định kỹ thuật.');
+  const pv=day*pvCoverage/(psh*pr);
+  const nightSupply=night*nightCoverage;
+  const battery=nightSupply/(dod*eff);
+  loadSizingResult={monthlyKwh:monthly,billDays:days,dayShare,nightShare,dailyKwh:daily,dayKwh:day,nightKwh:night,pvCoverage:pvCoverage*100,nightCoverage:nightCoverage*100,psh,pr:pr*100,dod:dod*100,batteryEfficiency:eff*100,pvKwp:pv,nightSupplyKwh:nightSupply,batteryKwh:battery};
+  $('resDaily').textContent=daily.toFixed(1);$('resDay').textContent=day.toFixed(1);$('resNight').textContent=night.toFixed(1);$('resPv').textContent=pv.toFixed(1);$('resBattery').textContent=battery.toFixed(1);$('resNightSupply').textContent=nightSupply.toFixed(1);
+  $('loadSizingAssumptions').textContent='Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; pin DoD '+(dod*100).toFixed(0)+'%, hiệu suất '+(eff*100).toFixed(0)+'%. Đây là sizing sơ bộ theo điện năng trung bình, cần kiểm tra biểu đồ phụ tải 15–30 phút và giới hạn inverter trước khi chốt thiết kế.';
+  $('loadSizingResults').style.display='block';$('loadSizingStatus').textContent='Đã tính toán. Kiểm tra lại dữ liệu hóa đơn và các giả định trước khi áp dụng.';return loadSizingResult;
+}
+function applyLoadSizing(){
+ try{
+  const r=loadSizingResult||calculateLoadSizing();
+  $('load').value=Math.round(r.monthlyKwh);
+  const panelW=n('panelW')||625;$('panelQty').value=Math.ceil(r.pvKwp*1000/panelW);
+  $('batKwh').value=r.batteryKwh.toFixed(1);$('batQty').value=1;
+  $('usagePattern').value='Tỷ lệ tiêu thụ ban ngày '+r.dayShare.toFixed(1)+'%, ban đêm '+r.nightShare.toFixed(1)+'%; điện năng trung bình ban ngày '+r.dayKwh.toFixed(1)+' kWh/ngày, ban đêm '+r.nightKwh.toFixed(1)+' kWh/ngày.';
+  calc();$('loadSizingStatus').textContent='Đã áp dụng điện năng tháng, số lượng tấm PV dự kiến và dung lượng pin vào cấu hình. Hãy kiểm tra và lưu dự án.';
+ }catch(e){$('loadSizingStatus').textContent=e.message}
+}
+async function readBill(){
+ const f=$('billFile').files[0];if(!f){$('billReadStatus').textContent='Chọn hóa đơn PDF hoặc ảnh trước.';return}
+ const fd=new FormData();fd.append('file',f);
+ try{
+  $('billReadStatus').textContent='Đang đọc hóa đơn...';
+  const res=await fetch('/api/bill/read',{method:'POST',body:fd});let d={};try{d=await res.json()}catch(_){}
+  if(!res.ok)throw Error(d.detail||'Không đọc được hóa đơn');
+  if(d.monthly_kwh!==null&&d.monthly_kwh!==undefined)$('billMonthKwh').value=d.monthly_kwh;
+  if(d.period_days)$('billDays').value=d.period_days;
+  calcBillNightShare();$('billReadStatus').textContent=(d.ocr_used?'Đã OCR ảnh/PDF. ':'Đã đọc lớp văn bản PDF. ')+(d.monthly_kwh?'Nhận diện được '+d.monthly_kwh+' kWh. ':'Chưa chắc chắn sản lượng; vui lòng nhập bằng tay.')+(d.period_days?' Kỳ '+d.period+'.':'');
+  $('billReadStatus').title=d.raw_text||'';
+  $('loadSizingStatus').textContent='Dữ liệu nhận diện chỉ là gợi ý; hãy đối chiếu trực tiếp hóa đơn trước khi tính.';
+ }catch(e){$('billReadStatus').textContent=e.message}
+}
+$('billDayShare').addEventListener('input',calcBillNightShare);
+for(const id of ['billMonthKwh','billDays','billPvCoverage','billNightCoverage','billPsh','billPr','billDod','billBattEff'])$(id).addEventListener('input',()=>{loadSizingResult=null});
+
 async function api(u,opt={}){let r=await fetch(u,opt);if(r.status===401){location='/login-page';throw Error('Cần đăng nhập lại')}if(!r.ok)throw Error((await r.json()).detail||'Có lỗi');return r.json()}
 async function save(){try{let p=payload();p.folderId=currentFolderId;let r=pid?await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}):await api('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});pid=r.id;$('status').textContent='Đã lưu dự án vào thư mục.';list()}catch(e){$('status').textContent=e.message}}
 async function list(){if(!currentFolderId)return;let a=await api('/api/folders/'+currentFolderId+'/projects');let html=a.map(x=>`<div class='project'><span><b>${esc(x.name)}</b><br><small>${esc(x.customer||'')}</small></span><span><button class='btn alt' onclick="openP('${x.id}')">Mở</button> <button class='btn alt' onclick="delP('${x.id}')">Xóa</button></span></div>`).join('')||'<div class="muted">Thư mục chưa có dự án. Nhấn Bắt đầu tạo dự án để thêm hồ sơ đầu tiên.</div>';$('projects').innerHTML=html;$('folderProjectList').innerHTML=html}
@@ -197,6 +275,93 @@ async def logout(request:Request):
 def home(request:Request):
     if request.session.get("user")!=USER: return RedirectResponse("/login-page",status_code=303)
     return PAGE
+
+
+def _bill_number(raw):
+    raw=(raw or "").strip().replace(" ","")
+    if not raw: return None
+    if "," in raw and "." in raw:
+        if raw.rfind(",")>raw.rfind("."): raw=raw.replace(".","").replace(",",".")
+        else: raw=raw.replace(",","")
+    elif "," in raw:
+        tail=raw.rsplit(",",1)[-1]
+        raw=raw.replace(",","." if len(tail)<=2 else "")
+    elif "." in raw:
+        tail=raw.rsplit(".",1)[-1]
+        if len(tail)==3: raw=raw.replace(".","")
+    try: return float(raw)
+    except ValueError: return None
+
+def _bill_extract_values(text):
+    lines=[re.sub(r"\s+"," ",x).strip() for x in (text or "").splitlines() if x.strip()]
+    kwh=None
+    patterns=[
+        r"(?:điện năng tiêu thụ|sản lượng điện tiêu thụ|tổng điện năng|điện năng sử dụng|điện tiêu thụ|tổng sản lượng)[^\d]{0,45}([\d.,]+)\s*kwh",
+        r"([\d.,]+)\s*kwh[^\n]{0,50}(?:điện năng tiêu thụ|sản lượng|tiêu thụ)"
+    ]
+    for line in lines:
+        low=line.lower()
+        if any(x in low for x in ("đơn giá","thành tiền","chỉ số công tơ","điện năng phản kháng")): continue
+        for pat in patterns:
+            m=re.search(pat,line,re.I)
+            if m:
+                val=_bill_number(m.group(1))
+                if val and val>0:
+                    kwh=val; break
+        if kwh is not None: break
+    # Common EVN bill layouts show a standalone total before the kWh unit.
+    if kwh is None:
+        for line in lines:
+            low=line.lower()
+            if "kwh" in low and any(x in low for x in ("tổng","cộng","tiêu thụ","sản lượng")):
+                m=re.search(r"([\d.,]+)\s*kwh",line,re.I)
+                if m:
+                    val=_bill_number(m.group(1))
+                    if val and val>0: kwh=val; break
+    period_days=None; period=""
+    m=re.search(r"(?:từ ngày|từ)\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4}).{0,50}?(?:đến ngày|đến)\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",text or "",re.I|re.S)
+    if m:
+        period=m.group(1)+" đến "+m.group(2)
+        try:
+            a=datetime.strptime(m.group(1).replace("-","/"),"%d/%m/%Y")
+            b=datetime.strptime(m.group(2).replace("-","/"),"%d/%m/%Y")
+            period_days=max(1,(b-a).days)
+        except Exception: pass
+    return {"monthly_kwh":kwh,"period_days":period_days,"period":period,"raw_text":"\n".join(lines)[:7000]}
+
+@app.post("/api/bill/read")
+async def read_electricity_bill(request:Request,file:UploadFile=File(...)):
+    auth(request)
+    name=Path(file.filename or "bill").name
+    ext=Path(name).suffix.lower()
+    if ext not in (".pdf",".png",".jpg",".jpeg",".webp"):
+        raise HTTPException(400,"Chỉ hỗ trợ hóa đơn PDF, PNG, JPG hoặc WEBP.")
+    data=await file.read()
+    if not data or len(data)>20*1024*1024:
+        raise HTTPException(413,"File hóa đơn trống hoặc vượt quá 20 MB.")
+    text=""; used_ocr=False
+    try:
+        if ext==".pdf":
+            reader=PdfReader(io.BytesIO(data))
+            text="\n".join((p.extract_text() or "") for p in reader.pages[:5])
+            if len(text.strip())<80:
+                pages=convert_from_bytes(data,dpi=250,first_page=1,last_page=min(3,len(reader.pages)))
+                text="\n".join(pytesseract.image_to_string(im,lang="vie+eng") for im in pages)
+                used_ocr=True
+        else:
+            im=Image.open(io.BytesIO(data)).convert("RGB")
+            text=pytesseract.image_to_string(im,lang="vie+eng")
+            used_ocr=True
+    except Exception as exc:
+        print(f"Bill parsing error: {type(exc).__name__}: {exc}",flush=True)
+        raise HTTPException(422,"Không đọc được file hóa đơn. Bạn có thể nhập số liệu bằng tay.")
+    if not text.strip():
+        raise HTTPException(422,"Không nhận diện được nội dung hóa đơn. Vui lòng nhập số liệu bằng tay.")
+    result=_bill_extract_values(text)
+    result["filename"]=name
+    result["ocr_used"]=used_ocr
+    result["message"]="Đã trích xuất văn bản; vui lòng kiểm tra và xác nhận sản lượng, số ngày trước khi tính toán."
+    return result
 
 @app.post("/api/pvwatts")
 async def pvwatts(request:Request):
