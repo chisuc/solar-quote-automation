@@ -7,3 +7,6 @@ playwright==1.51.0
 openpyxl==3.1.5
 python-pptx==1.0.2
 Pillow==11.1.0
+pypdf==5.4.0
+pytesseract==0.3.13
+pdf2image==1.17.0
