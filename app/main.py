@@ -468,8 +468,12 @@ def _ppt_set_shape_text(shape,text):
     if not paragraphs:
         tf.text=str(text)
         return
-    for i,para in enumerate(paragraphs):
-        _ppt_set_paragraph_text(para, lines[i] if i<len(lines) else "")
+    for i,para in enumerate(paragraphs[:len(lines)]):
+        _ppt_set_paragraph_text(para, lines[i])
+    # Remove unused source paragraphs so fewer replacement lines do not leave
+    # large blank gaps in the generated slide.
+    for para in paragraphs[len(lines):]:
+        para._element.getparent().remove(para._element)
     # If the replacement needs more lines than the template, clone the last
     # paragraph's formatting before adding the additional content.
     for line in lines[len(paragraphs):]:
