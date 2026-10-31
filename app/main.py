@@ -643,7 +643,7 @@ async def create_presentation_report(pid:str,request:Request):
             if para.runs:
                 para.runs[0].text=f"TP.HCM ngày {quote_date_display}, hiệu lực đến ngày {valid_date_display}"
                 for run in para.runs[1:]: run.text=""
-        # Slide 3: update only self-consumption and 30-year savings from PTTC present!R113.
+        # Slide 3: update only self-consumption and 30-year savings from PTTC present!R133.
         slide3=prs.slides[2]
         percent_text=fmt(self_use,1).rstrip("0").rstrip(",")+"%"
         if len(slide3.shapes)>7 and slide3.shapes[7].has_text_frame:
@@ -658,11 +658,11 @@ async def create_presentation_report(pid:str,request:Request):
         pttc_bytes=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(pttc_rows[0]["path"],safe="/")).content
         pttc_wb=load_workbook(io.BytesIO(pttc_bytes),data_only=True,read_only=True)
         try:
-            accumulated=pttc_wb["present"]["R113"].value
+            accumulated=pttc_wb["present"]["R133"].value
         finally:
             pttc_wb.close()
         if accumulated is None:
-            raise HTTPException(409,"Ô present!R113 chưa có kết quả. Hãy tạo lại báo cáo PTTC rồi xuất PowerPoint.")
+            raise HTTPException(409,"Ô present!R133 chưa có kết quả. Hãy tạo lại báo cáo PTTC rồi xuất PowerPoint.")
         savings_text=f"{float(accumulated):.1f}".replace(".",",")
         pttc_read=load_workbook(io.BytesIO(pttc_bytes),data_only=True,read_only=True)
         try:
