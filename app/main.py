@@ -385,7 +385,8 @@ async def create_financial_report(pid:str,request:Request):
         wb.calculation.forceFullCalc=True
         wb.calculation.calcMode="auto"
         out=io.BytesIO(); wb.save(out); wb.close()
-        generated=restore_excel_connections(original,out.getvalue())
+        generated=_recalculate_xlsx(out.getvalue())
+        generated=restore_excel_connections(original,generated)
     except HTTPException: raise
     except Exception as exc:
         print(f"Financial report generation error: {type(exc).__name__}: {exc}",flush=True)
@@ -424,6 +425,24 @@ async def upload_presentation_template(request:Request,file:UploadFile=File(...)
         raise HTTPException(400,"File PowerPoint không hợp lệ hoặc không đủ 14 slide: "+str(exc)[:250])
     sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(PRESENTATION_TEMPLATE_PATH,safe="/"),data=data,headers={"Content-Type":"application/vnd.openxmlformats-officedocument.presentationml.presentation","x-upsert":"true"})
     return {"ok":True,"name":PRESENTATION_TEMPLATE_NAME,"slides":14}
+
+def _recalculate_xlsx(data):
+    """Recalculate workbook formulas with LibreOffice so data_only reads contain current values."""
+    import shutil, subprocess, tempfile
+    office=shutil.which("libreoffice") or shutil.which("soffice")
+    if not office:
+        raise HTTPException(503,"Máy chủ chưa có LibreOffice để tính lại công thức PTTC.")
+    with tempfile.TemporaryDirectory() as td:
+        src=Path(td)/"input.xlsx"
+        outdir=Path(td)/"recalc"
+        outdir.mkdir()
+        src.write_bytes(data)
+        proc=subprocess.run([office,"-env:UserInstallation=file://"+str(Path(td)/"lo-profile"),"--headless","--convert-to","xlsx","--outdir",str(outdir),str(src)],capture_output=True,text=True,timeout=120)
+        result=outdir/"input.xlsx"
+        if proc.returncode!=0 or not result.exists():
+            raise HTTPException(500,"Không thể tính lại công thức PTTC: "+(proc.stderr or proc.stdout or "LibreOffice error")[:250])
+        return result.read_bytes()
+
 
 def _ppt_set_paragraph_text(paragraph,text):
     """Replace paragraph text while retaining its paragraph and character styling."""
@@ -567,24 +586,33 @@ async def create_presentation_report(pid:str,request:Request):
         # Slide 1: cover information
         text_shape(prs.slides[0],7,f"TÓM TẮT DỰ ÁN\nĐIỆN MẶT TRỜI MÁI NHÀ\n\nChủ đầu tư:\n{customer}\nTổng thầu:\nCÔNG TY CỔ PHẦN CẢNH NGHI R.E")
         text_shape(prs.slides[0],8,f"TP.HCM ngày {date}")
-        # Slide 3: only update the self-consumption percentage and 30-year accumulated savings.
-        # Keep every other original text box, paragraph, image, shape, and layout untouched.
+        # Slide 3: update only the percentage and 30-year savings from PTTC present!R113.
+        # Preserve every other original paragraph, shape, image, and layout.
         slide3=prs.slides[2]
+        percent_text=fmt(self_use,1).rstrip("0").rstrip(",")+"%"
         if len(slide3.shapes)>7 and slide3.shapes[7].has_text_frame:
-            paragraphs=slide3.shapes[7].text_frame.paragraphs
-            if len(paragraphs)>2:
-                percent=fmt(self_use,1).rstrip("0").rstrip(",")+"%"
-                runs=paragraphs[2].runs
-                numeric=[r for r in runs if re.search(r"\d",r.text)]
-                if numeric:
-                    numeric[0].text=percent
-                    for run in numeric[1:]: run.text=""
+            for run in slide3.shapes[7].text_frame.paragraphs[2].runs:
+                if "75-100%" in run.text:
+                    run.text=run.text.replace("75-100%",percent_text)
+                    break
+        pttc_files=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"name,path","order":"name.asc"}).json()
+        pttc_candidates=[x for x in pttc_files if str(x.get("name","")).startswith("PTTC_") and str(x.get("name","")).lower().endswith(".xlsx")]
+        if not pttc_candidates:
+            raise HTTPException(409,"Chưa có file PTTC của dự án. Hãy xuất báo cáo PTTC trước khi xuất PowerPoint.")
+        pttc_item=pttc_candidates[-1]
+        pttc_bytes=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(pttc_item["path"],safe="/")).content
+        pttc_wb=load_workbook(io.BytesIO(pttc_bytes),data_only=True,read_only=True)
+        try:
+            accumulated=pttc_wb["present"]["R113"].value
+        finally:
+            pttc_wb.close()
+        if accumulated is None:
+            raise HTTPException(409,"Ô present!R113 chưa có kết quả. Hãy xuất lại báo cáo PTTC sau khi hệ thống tính toán.")
+        savings_text=f"{float(accumulated):.1f}".replace(".",",")
         if len(slide3.shapes)>8 and slide3.shapes[8].has_text_frame:
             paragraphs=slide3.shapes[8].text_frame.paragraphs
             if len(paragraphs)>1 and paragraphs[1].runs:
-                savings=str(p.get("savings30Years") or p.get("accumulatedSavings30Years") or "").strip()
-                if savings:
-                    paragraphs[1].runs[0].text="LÊN ĐẾN "+savings
+                paragraphs[1].runs[0].text="LÊN ĐẾN "+savings_text+" TỶ ĐỒNG"
         # Slide 4: project data table
         s4=prs.slides[3]
         for sh in s4.shapes:
