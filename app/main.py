@@ -212,7 +212,7 @@ async def global_solar_atlas(request:Request):
                     a,h=map(float,pair.split(":")); x=40+a/360*320; y=150-h/25*110; pts.append(f"{x:.1f},{max(25,min(150,y)):.1f}")
                 except Exception: pass
             if pts: horizon_svg='<svg viewBox="0 0 400 190" role="img" aria-label="Đường chân trời theo phương vị"><rect x="40" y="25" width="320" height="125" fill="#fff2ad"/><polyline points="'+ " ".join(pts)+'" fill="none" stroke="#e44" stroke-width="2"/><path d="M40 150H360" stroke="#667" /><text x="40" y="178" font-size="11">Bắc</text><text x="190" y="178" font-size="11">Nam</text><text x="345" y="178" font-size="11">Bắc</text></svg>'
-        return {"pvout":yearly("Esm"),"dni":yearly("Dnim"),"ghi":yearly("Ghm"),"dif":(yearly("Dhd")*365.25 if yearly("Dhd") is not None else None),"gti":yearly("Gim"),"opta":yearly("optimum","fixed"),"temp":yearly("Temp"),"elevation":yearly("terrain","elevation"),"horizon_svg":horizon_svg,"horizon":horizon,"source":"Solargis LTA API"}
+        return {"pvout":yearly("Esm"),"dni":yearly("Dnim"),"ghi":yearly("Ghm"),"dif":(yearly("Dhd")*365.25 if yearly("Dhd") is not None else None),"gti":yearly("Gim"),"opta":yearly("optimum","fixed"),"temp":yearly("Td"),"elevation":(float(nodes["terrain"].attrib["elevation"]) if nodes.get("terrain") is not None and nodes["terrain"].attrib.get("elevation") else None),"horizon_svg":horizon_svg,"horizon":horizon,"source":"Solargis LTA API"}
     except HTTPException: raise
     except requests.RequestException as exc:
         print(f"Solargis LTA connection error: {type(exc).__name__}: {exc}",flush=True)
