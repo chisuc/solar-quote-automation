@@ -1,4 +1,4 @@
-import os, json, uuid, secrets, hmac, mimetypes, asyncio
+import os, json, uuid, secrets, hmac, mimetypes, asyncio, io, zipfile, xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -6,6 +6,7 @@ import requests
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.middleware.sessions import SessionMiddleware
+from openpyxl import load_workbook
 
 USER=os.getenv("ADMIN_USER","admin")
 PASS=os.getenv("ADMIN_PASSWORD","")
@@ -79,7 +80,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='panel'><h3>Khách hàng & công trình</h3><div class='grid'><div class='field'><label>Tên dự án</label><input id='projectName'></div><div class='field'><label>Khách hàng / công ty</label><input id='customer'></div><div class='field'><label>Người liên hệ</label><input id='contact'></div><div class='field'><label>Số điện thoại</label><input id='phone'></div><div class='field'><label>Địa chỉ</label><input id='address'></div><div class='field'><label>Ngày báo giá</label><input id='date' type='date'></div><div class='field'><label>Diện tích mái (m²)</label><input id='roof' type='number'></div><div class='field'><label>Kết cấu mái</label><select id='roofType'><option>Mái tôn</option><option>Mái bê tông</option><option>Mái ngói</option></select></div></div></div>
 <div class='panel'><h3>Cấu hình hệ thống</h3><div class='grid'><div class='field'><label>Thương hiệu tấm pin</label><input id='panelBrand'></div><div class='field'><label>Công suất tấm pin (Wp)</label><input id='panelW' type='number' value='625'></div><div class='field'><label>Số lượng tấm</label><input id='panelQty' type='number' value='30'></div><div class='field'><label>Công suất PV (kWp)</label><input id='pv' readonly></div><div class='field'><label>Inverter / Model</label><input id='invModel'></div><div class='field'><label>Công suất inverter (kW)</label><input id='invKw' type='number'></div><div class='field'><label>Số pha</label><select id='phase'><option>1 pha</option><option>3 pha</option></select></div><div class='field'><label>Pin lưu trữ / Model</label><input id='batModel'></div><div class='field'><label>Dung lượng mỗi bộ (kWh)</label><input id='batKwh' type='number' step='.01'></div><div class='field'><label>Số lượng bộ pin</label><input id='batQty' type='number' value='0'></div><div class='field'><label>Tổng dung lượng pin (kWh)</label><input id='batTotal' readonly></div></div></div>
 <div class='panel'><h3>Điện năng & báo giá</h3><div class='grid'><div class='field'><label>Tiêu thụ tháng (kWh)</label><input id='load' type='number'></div><div class='field'><label>Sản lượng ĐMT năm (kWh)</label><input id='annual' type='number'></div><div class='field'><label>Tự tiêu thụ dự kiến (%)</label><input id='self' type='number' value='80'></div><div class='field'><label>Đơn giá điện (đ/kWh)</label><input id='price' type='number'></div><div class='field'><label>Tổng trước VAT (VNĐ)</label><input id='pre' type='number'></div><div class='field'><label>VAT (%)</label><input id='vat' type='number' value='8'></div><div class='field'><label>Tiền VAT</label><input id='vatMoney' readonly></div><div class='field'><label>Tổng sau VAT</label><input id='grand' readonly></div></div></div>
-<div class='panel' id='financialPanel'><div class='row' style='justify-content:space-between;align-items:center'><div><h3 style='margin:0'>Phân tích tài chính</h3><p class='muted'>Sử dụng mặc định theo file mẫu. Chỉ điều chỉnh khi cần thiết.</p></div><button class='btn alt' id='financialToggle' type='button' onclick='toggleFinancialAdvanced()'>⚙ Điều chỉnh chuyên sâu PTTC</button></div><div id='financialAdvanced' style='display:none;margin-top:16px'><p class='muted'>Ô để trống sẽ giữ nguyên thông số trong file Excel gốc. Chỉ các ô có nhập giá trị mới được thay đổi.</p><div class='grid'><div class='field'><label>Tỷ lệ lạm phát (%/năm)</label><input id='finInflation' type='number' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Mức tăng giá điện (%/năm)</label><input id='finElectricityEscalation' type='number' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Tỷ lệ tiêu thụ điện (%)</label><input id='finSelfConsumption' type='number' step='0.01' placeholder='Giữ nguyên theo thông số dự án'></div><div class='field'><label>Tỷ lệ vay vốn (%)</label><input id='finLoanRatio' type='number' min='0' max='100' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Thời hạn vay (năm)</label><input id='finLoanTerm' type='number' min='0' step='1' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Lãi suất vay (%/năm)</label><input id='finLoanRate' type='number' min='0' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Thời gian khấu hao (năm)</label><input id='finDepreciation' type='number' min='1' step='1' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Chi phí vận hành (triệu đồng/năm)</label><input id='finOperatingCost' type='number' min='0' step='0.01' placeholder='Giữ nguyên mặc định'></div></div><div class='row'><button class='btn' type='button' onclick='applyFinancialOverrides()'>Thay đổi & lưu</button><button class='btn alt' type='button' onclick='resetFinancialOverrides()'>Xóa điều chỉnh</button></div><div id='financialStatus' class='muted' aria-live='polite'></div></div></div>
+<div class='panel' id='financialPanel'><div class='row' style='justify-content:space-between;align-items:center'><div><h3 style='margin:0'>Phân tích tài chính</h3><p class='muted'>Sử dụng mặc định theo file mẫu. Chỉ điều chỉnh khi cần thiết.</p></div><button class='btn alt' id='financialToggle' type='button' onclick='toggleFinancialAdvanced()'>⚙ Điều chỉnh chuyên sâu PTTC</button></div><div id='financialAdvanced' style='display:none;margin-top:16px'><p class='muted'>Ô để trống sẽ giữ nguyên thông số trong file Excel gốc. Chỉ các ô có nhập giá trị mới được thay đổi.</p><div class='grid'><div class='field'><label>Tỷ lệ lạm phát (%/năm)</label><input id='finInflation' type='number' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Mức tăng giá điện (%/năm)</label><input id='finElectricityEscalation' type='number' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Tỷ lệ tiêu thụ điện (%)</label><input id='finSelfConsumption' type='number' step='0.01' placeholder='Giữ nguyên theo thông số dự án'></div><div class='field'><label>Tỷ lệ vay vốn (%)</label><input id='finLoanRatio' type='number' min='0' max='100' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Thời hạn vay (năm)</label><input id='finLoanTerm' type='number' min='0' step='1' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Lãi suất vay (%/năm)</label><input id='finLoanRate' type='number' min='0' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Thời gian khấu hao (năm)</label><input id='finDepreciation' type='number' min='1' step='1' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Chi phí vận hành (triệu đồng/năm)</label><input id='finOperatingCost' type='number' min='0' step='0.01' placeholder='Giữ nguyên mặc định'></div></div><div class='row' style='align-items:center'><input id='financialTemplateFile' type='file' accept='.xlsx' style='max-width:320px'><button class='btn alt' type='button' onclick='uploadFinancialTemplate()'>Tải mẫu Excel lên hệ thống</button><button class='btn' type='button' onclick='generateFinancialReport()'>Tạo báo cáo PTTC</button></div><div id='financialReportStatus' class='muted' aria-live='polite'></div><div class='row'><button class='btn' type='button' onclick='applyFinancialOverrides()'>Thay đổi & lưu</button><button class='btn alt' type='button' onclick='resetFinancialOverrides()'>Xóa điều chỉnh</button></div><div id='financialStatus' class='muted' aria-live='polite'></div></div></div>
 <div class='panel'><h3>Mô phỏng sản lượng PVWatts V8</h3><p class='muted'>Nhập tọa độ và thông số mô phỏng, sau đó bấm lấy dữ liệu trực tiếp từ PVWatts.</p><div class='grid'>
 <div class='field' style='grid-column:1/-1'><label>Tọa độ công trình (dán Latitude, Longitude)</label><input id='coordPaste' type='text' placeholder='Ví dụ: 10.821006371676384, 106.68872440336703' autocomplete='off'><div id='coordStatus' class='muted'>Dán một dòng tọa độ Google Maps; website tự tách vĩ độ và kinh độ.</div><input id='lat' type='hidden'><input id='lon' type='hidden'></div>
 <div class='field'><label>DC System Size (kW)</label><input id='pvSystemSize' type='number' step='.01' placeholder='Tự lấy từ công suất PV nếu để trống'></div>
@@ -109,6 +110,9 @@ function showFinancialOverrides(){for(const [id,key] of Object.entries(financial
 function toggleFinancialAdvanced(){let el=$('financialAdvanced'),open=el.style.display==='none';el.style.display=open?'block':'none';$('financialToggle').textContent=open?'Ẩn điều chỉnh chuyên sâu':'⚙ Điều chỉnh chuyên sâu PTTC'}
 async function applyFinancialOverrides(){try{financialOverrides=readFinancialOverrides();$('financialStatus').textContent='Đã áp dụng '+Object.keys(financialOverrides).length+' thông số điều chỉnh. Đang lưu theo dự án...';if(pid){let p=payload();p.financialOverrides=financialOverrides;let r=await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});$('financialStatus').textContent='Đã lưu thông số PTTC theo dự án. Khi tạo báo cáo, chỉ các thông số này được thay thế; ô bỏ trống giữ nguyên mẫu.'}else{$('financialStatus').textContent='Đã nhận thông số. Hãy lưu dự án trước để lưu điều chỉnh PTTC.'}}catch(e){$('financialStatus').textContent=e.message}}
 function resetFinancialOverrides(){financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='Đã xóa các điều chỉnh; sẽ sử dụng thông số mặc định của mẫu PTTC.'}
+async function uploadFinancialTemplate(){let f=$('financialTemplateFile').files[0];if(!f){$('financialReportStatus').textContent='Chọn file Excel mẫu trước.';return}let fd=new FormData();fd.append('file',f);try{$('financialReportStatus').textContent='Đang tải mẫu PTTC...';let r=await fetch('/api/financial-template',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không tải được mẫu PTTC');$('financialReportStatus').textContent='Đã lưu mẫu PTTC trên hệ thống.';$('financialTemplateFile').value=''}catch(e){$('financialReportStatus').textContent=e.message}}
+async function generateFinancialReport(){if(!pid){$('financialReportStatus').textContent='Hãy lưu dự án trước khi tạo báo cáo PTTC.';return}try{$('financialReportStatus').textContent='Đang tạo file Excel PTTC...';let p=payload();let r=await api('/api/projects/'+pid+'/financial-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:p})});$('financialReportStatus').innerHTML='Đã tạo báo cáo: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('financialReportStatus').textContent='Không tạo được báo cáo: '+e.message}}
+
 function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.financialOverrides=financialOverrides;o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;o.gsaImages=gsaImages;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined)$(k).value=o[k]});financialOverrides=o.financialOverrides||{};showFinancialOverrides();pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;gsaImages=o.gsaImages||[];renderGSAImages();renderPV();calc()}
 $('albedoMode').addEventListener('change',()=>{$('albedoField').style.display=$('albedoMode').value==='manual'?'block':'none'});
 let compassAngle=180,azimuthConfirmed=true;
@@ -229,6 +233,166 @@ async def pvwatts(request:Request):
     except requests.RequestException as exc:
         print(f"PVWatts connection error: {type(exc).__name__}: {exc}", flush=True)
         raise HTTPException(502,"Render không kết nối được máy chủ PVWatts (NLR). Đã ghi chi tiết lỗi vào Render Logs; vui lòng thử lại sau khi Deploy bản cập nhật.")
+
+
+FINANCIAL_TEMPLATE_PATH="system/financial-analysis-template.xlsx"
+FINANCIAL_TEMPLATE_NAME="financial-analysis-template.xlsx"
+
+def restore_excel_connections(original_bytes, generated_bytes):
+    """Keep the source workbook's Power Query connection/custom XML package parts."""
+    source=zipfile.ZipFile(io.BytesIO(original_bytes))
+    generated=zipfile.ZipFile(io.BytesIO(generated_bytes))
+    out=io.BytesIO()
+    with zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED) as target:
+        generated_names=set(generated.namelist())
+        for item in generated.infolist():
+            target.writestr(item,generated.read(item.filename))
+        preserved=["xl/connections.xml","customXml/item1.xml","customXml/itemProps1.xml","customXml/_rels/item1.xml.rels"]
+        for name in preserved:
+            if name in source.namelist() and name not in generated_names:
+                target.writestr(name,source.read(name))
+        rel_name="xl/_rels/workbook.xml.rels"
+        rel_root=ET.fromstring(generated.read(rel_name))
+        rel_ns="http://schemas.openxmlformats.org/package/2006/relationships"
+        ET.register_namespace("",rel_ns)
+        existing_targets={x.attrib.get("Target","") for x in rel_root}
+        next_id=1
+        used={x.attrib.get("Id","") for x in rel_root}
+        def new_id():
+            nonlocal next_id
+            while "rId"+str(next_id) in used: next_id+=1
+            value="rId"+str(next_id); used.add(value); next_id+=1
+            return value
+        relations=[
+            ("http://schemas.openxmlformats.org/officeDocument/2006/relationships/connections","connections.xml"),
+            ("http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml","../customXml/item1.xml")
+        ]
+        for typ,target in relations:
+            if target in existing_targets: continue
+            part=("xl/"+target).replace("xl/../","")
+            if part not in source.namelist(): continue
+            ET.SubElement(rel_root,"{"+rel_ns+"}Relationship",{"Id":new_id(),"Type":typ,"Target":target})
+        target.writestr(rel_name,ET.tostring(rel_root,encoding="utf-8",xml_declaration=True))
+        ct_name="[Content_Types].xml"
+        ct_root=ET.fromstring(generated.read(ct_name))
+        ct_ns="http://schemas.openxmlformats.org/package/2006/content-types"
+        ET.register_namespace("",ct_ns)
+        overrides={x.attrib.get("PartName") for x in ct_root}
+        needed={
+          "/xl/connections.xml":"application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml",
+          "/customXml/itemProps1.xml":"application/vnd.openxmlformats-officedocument.customXmlProperties+xml"
+        }
+        for part,ctype in needed.items():
+            if part not in overrides and part.lstrip("/") in source.namelist():
+                ET.SubElement(ct_root,"{"+ct_ns+"}Override",{"PartName":part,"ContentType":ctype})
+        target.writestr(ct_name,ET.tostring(ct_root,encoding="utf-8",xml_declaration=True))
+    source.close(); generated.close()
+    return out.getvalue()
+
+@app.post("/api/financial-template")
+async def upload_financial_template(request:Request,file:UploadFile=File(...)):
+    auth(request)
+    name=Path(file.filename or "").name
+    if Path(name).suffix.lower()!=".xlsx":
+        raise HTTPException(400,"Mẫu PTTC phải là file .xlsx.")
+    data=await file.read()
+    if len(data)>10*1024*1024:
+        raise HTTPException(413,"File mẫu tối đa 10 MB.")
+    try:
+        check=load_workbook(io.BytesIO(data),read_only=True,data_only=False)
+        required={"THONG SO DAU VAO","present","draft ","16,66"}
+        missing=required-set(check.sheetnames)
+        check.close()
+        if missing: raise ValueError("Thiếu sheet: "+", ".join(sorted(missing)))
+    except Exception as exc:
+        raise HTTPException(400,"File Excel mẫu không hợp lệ hoặc thiếu sheet cần thiết: "+str(exc)[:250])
+    sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(FINANCIAL_TEMPLATE_PATH,safe="/"),data=data,headers={"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","x-upsert":"true"})
+    return {"ok":True,"name":FINANCIAL_TEMPLATE_NAME}
+
+@app.post("/api/projects/{pid}/financial-report")
+async def create_financial_report(pid:str,request:Request):
+    auth(request)
+    body=await request.json()
+    project=sb_request("GET",db("projects"),params={"id":f"eq.{pid}","select":"id,payload"}).json()
+    if not project or (project[0].get("payload") or {}).get("_recordType")=="folder":
+        raise HTTPException(404,"Không tìm thấy dự án.")
+    saved=project[0].get("payload") or {}
+    p=body.get("payload") or saved
+    overrides=p.get("financialOverrides") or saved.get("financialOverrides") or {}
+    try:
+        original=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(FINANCIAL_TEMPLATE_PATH,safe="/")).content
+    except HTTPException as exc:
+        if exc.status_code==404: raise HTTPException(409,"Chưa có file mẫu PTTC. Hãy tải file Excel mẫu lên trước.")
+        raise
+    try:
+        wb=load_workbook(io.BytesIO(original),data_only=False,keep_links=True)
+        inp=wb["THONG SO DAU VAO"]; present=wb["present"]; draft=wb["draft "]
+        def number(key, fallback=None):
+            value=p.get(key)
+            if value is None or value=="": return fallback
+            try: return float(value)
+            except (TypeError,ValueError): raise HTTPException(400,f"Thông số {key} không hợp lệ.")
+        pv=number("pv")
+        if pv is None:
+            pw=number("panelW"); qty=number("panelQty")
+            if pw is not None and qty is not None: pv=pw*qty/1000
+        if pv is not None and pv>0: inp["C3"]=pv
+        pre=number("pre")
+        if pre is not None: inp["C4"]=pre
+        price=number("price")
+        if price is not None: inp["C7"]=price
+        self_ratio=overrides.get("selfConsumption")
+        if self_ratio is None:
+            raw_self=number("self")
+            self_ratio=raw_self/100 if raw_self is not None else None
+        if self_ratio is not None:
+            if not 0<=float(self_ratio)<=1: raise HTTPException(400,"Tỷ lệ tiêu thụ điện phải từ 0 đến 100%.")
+            inp["C8"]=float(self_ratio); present["S48"]=float(self_ratio)
+        monthly=(p.get("pvwattsResult") or {}).get("monthly") or []
+        if len(monthly)==12:
+            for i,value in enumerate(monthly,11):
+                inp[f"C{i}"]=float(value)
+        if p.get("projectName"): present["C7"]=str(p["projectName"])
+        if p.get("address"): present["D8"]=str(p["address"])
+        roof=number("roof")
+        if roof is not None: present["D11"]=roof
+        override_map={
+          "inflation":("present","S46",0.0,1.0),
+          "electricityEscalation":("present","S47",0.0,1.0),
+          "loanRatio":("present","M49",0.0,100.0),
+          "loanTerm":("present","P49",0.0,30.0),
+          "loanRate":("present","S49",0.0,100.0),
+          "depreciationYears":("draft ","B14",1.0,50.0),
+          "operatingCost":("draft ","B15",0.0,1000000000.0)
+        }
+        for key,(sheet,cell,low,high) in override_map.items():
+            if key not in overrides or overrides[key] in (None,""): continue
+            value=float(overrides[key])
+            if not low<=value<=high: raise HTTPException(400,f"Thông số {key} nằm ngoài giới hạn cho phép.")
+            if key in ("inflation","electricityEscalation","loanRate"): value/=100
+            if key=="loanRatio": value/=100
+            wb[sheet][cell]=value
+        # Force Excel to recalculate the original formulas when the generated workbook is opened.
+        wb.calculation.fullCalcOnLoad=True
+        wb.calculation.forceFullCalc=True
+        wb.calculation.calcMode="auto"
+        out=io.BytesIO(); wb.save(out); wb.close()
+        generated=restore_excel_connections(original,out.getvalue())
+    except HTTPException: raise
+    except Exception as exc:
+        print(f"Financial report generation error: {type(exc).__name__}: {exc}",flush=True)
+        raise HTTPException(500,"Không thể tạo báo cáo PTTC: "+str(exc)[:300])
+    project_name=str(p.get("projectName") or p.get("customer") or "Du an").strip()
+    safe_name=re.sub(r"[^A-Za-z0-9._-]+","_",project_name).strip("._")[:60] or "Du_an"
+    filename=f"PTTC_{safe_name}.xlsx"
+    fid=str(uuid.uuid4()); path=storage_path(pid,fid,filename)
+    sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),data=generated,headers={"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","x-upsert":"true"})
+    try:
+        sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":filename,"path":path},headers={"Prefer":"return=minimal"})
+    except Exception:
+        sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]})
+        raise
+    return {"id":fid,"name":filename,"recalculation":"Excel sẽ tính lại công thức khi mở file."}
 
 @app.post("/api/projects/{pid}/gsa-capture")
 async def capture_global_solar_atlas(pid:str,request:Request):
