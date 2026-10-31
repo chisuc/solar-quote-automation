@@ -646,10 +646,10 @@ async def create_presentation_report(pid:str,request:Request):
         slide3=prs.slides[2]
         percent_text=fmt(self_use,1).rstrip("0").rstrip(",")+"%"
         if len(slide3.shapes)>7 and slide3.shapes[7].has_text_frame:
-            for run in slide3.shapes[7].text_frame.paragraphs[2].runs:
-                if "75-100%" in run.text:
-                    run.text=run.text.replace("75-100%",percent_text)
-                    break
+            numeric_runs=[run for run in slide3.shapes[7].text_frame.paragraphs[2].runs if re.search(r"\\d",run.text)]
+            if numeric_runs:
+                numeric_runs[0].text=percent_text
+                for run in numeric_runs[1:]: run.text=""
         report_id=str(p.get("financialReportId") or "").strip()
         pttc_rows=sb_request("GET",db("uploads"),params={"id":f"eq.{report_id}","pid":f"eq.{pid}","select":"name,path"}).json() if report_id else []
         if not pttc_rows:
@@ -663,6 +663,11 @@ async def create_presentation_report(pid:str,request:Request):
         if accumulated is None:
             raise HTTPException(409,"Ô present!R113 chưa có kết quả. Hãy tạo lại báo cáo PTTC rồi xuất PowerPoint.")
         savings_text=f"{float(accumulated):.1f}".replace(".",",")
+        pttc_read=load_workbook(io.BytesIO(pttc_bytes),data_only=True,read_only=True)
+        try:
+            annual_pttc=sum(float(pttc_read["draft "][f"G{i}"].value or 0) for i in range(53,65))
+        finally:
+            pttc_read.close()
         if len(slide3.shapes)>8 and slide3.shapes[8].has_text_frame:
             paras=slide3.shapes[8].text_frame.paragraphs
             if len(paras)>1 and paras[1].runs:
@@ -696,7 +701,7 @@ async def create_presentation_report(pid:str,request:Request):
         text_shape(prs.slides[4],11,f"Hệ thống đề xuất:\nCông suất: {fmt(pv)} kWp\nDung lượng lưu trữ: {fmt(battery)} kWh\nTỉ lệ tiêu thụ điện ước tính: {fmt(self_use,1)}%")
         text_shape(prs.slides[4],14,f"Số điện:\n~{fmt(monthly_load,0)} kWh/tháng")
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
-        text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của hệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual,0)} kWh")
+        text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của hệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
         # Slides 7 onward are intentionally kept unchanged for this phase.
         # Replace the actual-roof and PV-layout photos in slides 4 and 10; keep all original geometry/cropping.
         uploads=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"id,name,path","order":"name.asc"}).json()
