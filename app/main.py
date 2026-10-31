@@ -65,14 +65,14 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Albedo</label><select id='albedoMode'><option value='weather'>Theo dữ liệu thời tiết (Weather file)</option><option value='manual'>Nhập thủ công</option></select></div>
 <div class='field' id='albedoField' style='display:none'><label>Albedo (0–1)</label><input id='albedo' type='number' value='.2' step='.01'></div>
 </div><div class='row'><button class='btn' onclick='runPVWatts()'>Tính toán PVWatts</button><span id='pvStatus' class='muted'></span></div><div id='pvResult' class='muted'>Chưa có kết quả mô phỏng.</div><div id='pvChart' style='display:none;margin-top:18px'><h4 style='margin:0 0 10px'>Biểu đồ sản lượng điện mặt trời theo tháng</h4><div id='pvChartCanvas' style='width:100%;overflow-x:auto'></div></div></div>
-<div class='panel'><h3>Phân tích tài nguyên mặt trời – Global Solar Atlas</h3><p class='muted'>Sử dụng cùng tọa độ đã nhập ở trên. Dữ liệu LTA lấy từ Solargis; bản đồ và biểu đồ được hiển thị riêng bên dưới.</p><div class='row'><button class='btn' onclick='runGlobalSolarAtlas()'>Lấy dữ liệu Global Solar Atlas</button><span id='gsaStatus' class='muted'>Chưa truy vấn dữ liệu.</span></div><div id='gsaResult' style='display:none'><div class='gsa-grid'><section class='gsa-card'><h4>1. Thông số bức xạ & PV</h4><div id='gsaMetrics'></div></section><section class='gsa-card'><h4>2. Bản đồ vị trí công trình</h4><iframe id='gsaLocationMap' title='Bản đồ Global Solar Atlas' loading='lazy' referrerpolicy='no-referrer' style='width:100%;height:300px;border:0'></iframe><a id='gsaOpenMap' target='_blank' rel='noopener'>Mở Global Solar Atlas</a></section><section class='gsa-card'><h4>3. Horizon & Sunpath</h4><div id='gsaSunpath'></div><p class='muted'>Đường chân trời lấy từ dữ liệu địa hình Solargis; quỹ đạo mặt trời được dựng theo tọa độ công trình.</p></section><section class='gsa-card'><h4>4. Bản đồ tiềm năng PVOUT</h4><iframe id='gsaPvoutMap' title='Bản đồ PVOUT Global Solar Atlas' loading='lazy' referrerpolicy='no-referrer' style='width:100%;height:300px;border:0'></iframe><a id='gsaOpenPvout' target='_blank' rel='noopener'>Mở bản đồ PVOUT</a></section></div><p class='muted'>Nguồn dữ liệu: Global Solar Atlas / Solargis. © World Bank Group, ESMAP và Solargis. Dữ liệu bản đồ được dẫn nguồn theo CC BY 4.0.</p></div></div>
+<div class='panel'><h3>Ảnh phân tích tài nguyên mặt trời – Global Solar Atlas</h3><p class='muted'>Nhập tọa độ ở phần PVWatts, lưu dự án, sau đó hệ thống tự mở Global Solar Atlas và chụp 4 khu vực dữ liệu thực tế.</p><div class='row'><button class='btn' id='gsaCaptureBtn' onclick='captureGlobalSolarAtlas()'>Tự động lấy 4 hình ảnh</button><span id='gsaStatus' class='muted'>Chưa chụp ảnh.</span></div><div id='gsaResult' style='display:none'><div class='gsa-grid'><section class='gsa-card'><h4>1. Thông số bức xạ & PV</h4><img id='gsaImage1' alt='Thông số bức xạ và PV' style='width:100%;height:auto;border:1px solid #dce5e1;border-radius:6px'></section><section class='gsa-card'><h4>2. Bản đồ vị trí công trình</h4><img id='gsaImage2' alt='Bản đồ vị trí công trình' style='width:100%;height:auto;border:1px solid #dce5e1;border-radius:6px'></section><section class='gsa-card'><h4>3. Horizon & Sunpath</h4><img id='gsaImage3' alt='Horizon và Sunpath' style='width:100%;height:auto;border:1px solid #dce5e1;border-radius:6px'></section><section class='gsa-card'><h4>4. Bản đồ tiềm năng PVOUT</h4><img id='gsaImage4' alt='Bản đồ PVOUT' style='width:100%;height:auto;border:1px solid #dce5e1;border-radius:6px'></section></div><p class='muted'>Ảnh chụp trực tiếp từ Global Solar Atlas. Nguồn: © World Bank Group, ESMAP và Solargis.</p></div></div>
 <div class='panel'><h3>Hồ sơ đầu vào</h3><input id='files' type='file' multiple><div class='row'><button class='btn' onclick='upload()'>Tải file lên máy chủ</button></div><div id='fileList' class='muted'></div></div>
 <div class='panel'><h3>Dự án đã lưu</h3><div class='row'><button class='btn' onclick='save()'>Lưu dự án</button><button class='btn alt' onclick='fresh()'>Dự án mới</button><button class='btn alt' onclick='exportJson()'>Xuất JSON</button></div><div id='projects'>Đang tải...</div><div id='status' class='muted'></div></div></main>
 <script>
-let pid=null,pvwattsResult=null;const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','customer','contact','phone','address','date','roof','roofType','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
+let pid=null,pvwattsResult=null,gsaImages=[];const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','customer','contact','phone','address','date','roof','roofType','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
 function calc(){let kw=n('panelW')*n('panelQty')/1000,v=n('pre')*n('vat')/100;$('pv').value=kw.toFixed(3);$('batTotal').value=(n('batKwh')*n('batQty')).toFixed(2);$('vatMoney').value=v.toFixed(0);$('grand').value=(n('pre')+v).toFixed(0)}
 document.addEventListener('input',e=>{if(e.target.tagName==='INPUT')calc()});
-function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined)$(k).value=o[k]});pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;renderPV();renderGSA();calc()}
+function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;o.gsaImages=gsaImages;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined)$(k).value=o[k]});pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;gsaImages=o.gsaImages||[];renderGSAImages();renderPV();calc()}
 $('albedoMode').addEventListener('change',()=>{$('albedoField').style.display=$('albedoMode').value==='manual'?'block':'none'});
 let compassAngle=180,azimuthConfirmed=true;
 function normAngle(v){return ((v%360)+360)%360}
@@ -89,9 +89,9 @@ $('coordPaste').addEventListener('change',parseCoordinates);
 $('coordPaste').addEventListener('blur',()=>{if($('coordPaste').value.trim())parseCoordinates()});
 paintCompass();
 function drawPVChart(a){let vals=a.map(Number),max=Math.max(...vals,1),W=900,H=330,L=64,R=18,T=28,B=48,plotW=W-L-R,plotH=H-T-B,step=plotW/12,bw=Math.min(42,step*.62),fmt=v=>Math.round(v).toLocaleString('vi-VN');let grid='',bars='';for(let i=0;i<=4;i++){let val=max*i/4,y=T+plotH-(plotH*i/4);grid+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="#e4ece8" stroke-width="1"/><text x="${L-9}" y="${y+4}" text-anchor="end" fill="#687a73" font-size="11">${fmt(val)}</text>`};vals.forEach((v,i)=>{let h=v/max*plotH,x=L+i*step+(step-bw)/2,y=T+plotH-h;bars+=`<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="4" fill="#16845b"><title>T${i+1}: ${fmt(v)} kWh</title></rect><text x="${x+bw/2}" y="${Math.max(13,y-7)}" text-anchor="middle" fill="#315c49" font-size="10">${fmt(v)}</text><text x="${x+bw/2}" y="${H-19}" text-anchor="middle" fill="#52665d" font-size="12">T${i+1}</text>`});$('pvChartCanvas').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Biểu đồ sản lượng PVWatts 12 tháng" style="display:block;width:100%;min-width:650px;height:auto;font-family:Arial,sans-serif">${grid}${bars}<text x="${L}" y="14" fill="#52665d" font-size="11">Sản lượng (kWh)</text></svg>`;$('pvChart').style.display='block'}
-let globalSolarAtlasResult=null;
-function renderGSA(){let g=globalSolarAtlasResult;if(!g){$('gsaResult').style.display='none';return}$('gsaResult').style.display='block';let rows=[['PVOUT specific',g.pvout,'kWh/kWp/năm'],['DNI',g.dni,'kWh/m²/năm'],['GHI',g.ghi,'kWh/m²/năm'],['DIF',g.dif,'kWh/m²/năm'],['GTI',g.gti,'kWh/m²/năm'],['OPTA',g.opta,'°'],['TEMP',g.temp,'°C'],['ELE',g.elevation,'m']];$('gsaMetrics').innerHTML='<table class="gsa-metrics">'+rows.map(x=>'<tr><td>'+x[0]+'</td><td>'+ (x[1]===null||x[1]===undefined?'—':Number(x[1]).toLocaleString('vi-VN',{maximumFractionDigits:1})+' '+x[2])+'</td></tr>').join('')+'</table>';$('gsaSunpath').innerHTML=g.horizon_svg||'<p class="muted">Chưa có dữ liệu đường chân trời.</p>';let lat=n('lat'),lon=n('lon'),url='https://globalsolaratlas.info/map?c='+lat+','+lon+',10';$('gsaLocationMap').src=url;$('gsaPvoutMap').src=url;$('gsaOpenMap').href=url;$('gsaOpenPvout').href=url}
-async function runGlobalSolarAtlas(){try{if(!parseCoordinates())throw Error('Vui lòng kiểm tra tọa độ trước.');$('gsaStatus').textContent='Đang truy vấn Solargis...';let r=await api('/api/global-solar-atlas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat:n('lat'),lon:n('lon'),tilt:n('tilt'),azimuth:n('azimuth'),system_capacity:n('pvSystemSize')||n('pv')})});globalSolarAtlasResult=r;renderGSA();$('gsaStatus').textContent='Đã lấy dữ liệu Global Solar Atlas thành công.'}catch(e){$('gsaStatus').textContent='Chưa lấy được dữ liệu: '+e.message}}
+let globalSolarAtlasResult=null,gsaImages=[];
+function renderGSAImages(){if(!gsaImages||!gsaImages.length){$('gsaResult').style.display='none';return}$('gsaResult').style.display='block';for(let i=0;i<4;i++){let item=gsaImages[i];$('gsaImage'+(i+1)).src=item?('/api/files/'+item.id):''}}
+async function captureGlobalSolarAtlas(){try{if(!parseCoordinates())throw Error('Vui lòng kiểm tra tọa độ.');if(!pid)throw Error('Trước tiên hãy lưu dự án bằng nút Lưu dự án.');let b=$('gsaCaptureBtn');b.disabled=true;b.textContent='Đang mở Atlas và chụp ảnh...';$('gsaStatus').textContent='Đang khởi chạy trình duyệt tự động. Có thể mất 1–2 phút.';let r=await api('/api/projects/'+pid+'/gsa-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat:n('lat'),lon:n('lon')})});gsaImages=r.images||[];renderGSAImages();$('gsaStatus').textContent='Đã chụp và lưu '+gsaImages.length+' ảnh vào dự án.';await listFiles()}catch(e){$('gsaStatus').textContent='Chưa hoàn tất: '+e.message}finally{$('gsaCaptureBtn').disabled=false;$('gsaCaptureBtn').textContent='Tự động lấy 4 hình ảnh'}}
 function renderPV(){if(!pvwattsResult){$('pvResult').textContent='Chưa có kết quả mô phỏng.';$('pvChart').style.display='none';return}let a=pvwattsResult.monthly||[];$('pvResult').innerHTML='<b>Sản lượng AC năm: '+Number(pvwattsResult.annual||0).toLocaleString('vi-VN',{maximumFractionDigits:0})+' kWh</b><br>'+a.map((v,i)=>['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'][i]+': '+Number(v).toLocaleString('vi-VN',{maximumFractionDigits:0})+' kWh').join(' · ')+'<br><small>Trạm thời tiết: '+esc(pvwattsResult.station||'Chưa có thông tin')+'</small>';drawPVChart(a)}
 async function runPVWatts(){try{if(!parseCoordinates())throw Error('Vui lòng kiểm tra lại tọa độ công trình.');if(!azimuthConfirmed)throw Error('Bạn hãy nhấn Xác nhận hướng trên la bàn trước khi tính toán.');$('pvStatus').textContent='Đang kết nối PVWatts...';let body={lat:n('lat'),lon:n('lon'),system_capacity:n('pvSystemSize')||n('pv'),module_type:n('moduleType'),array_type:n('arrayType'),tilt:n('tilt'),azimuth:n('azimuth'),losses:n('losses'),dc_ac_ratio:n('dcAcRatio'),inv_eff:n('invEff'),gcr:n('gcr'),use_wf_albedo:$('albedoMode').value==='weather'?1:0};if($('albedoMode').value==='manual')body.albedo=n('albedo');let r=await api('/api/pvwatts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});pvwattsResult=r;$('annual').value=Math.round(r.annual||0);$('pvStatus').textContent='Mô phỏng thành công · PVWatts V'+r.version;renderPV()}catch(e){$('pvStatus').textContent='Không lấy được dữ liệu: '+e.message}}
 async function api(u,opt={}){let r=await fetch(u,opt);if(r.status===401){location='/login-page';throw Error('Cần đăng nhập lại')}if(!r.ok)throw Error((await r.json()).detail||'Có lỗi');return r.json()}
@@ -174,53 +174,89 @@ async def pvwatts(request:Request):
         print(f"PVWatts connection error: {type(exc).__name__}: {exc}", flush=True)
         raise HTTPException(502,"Render không kết nối được máy chủ PVWatts (NLR). Đã ghi chi tiết lỗi vào Render Logs; vui lòng thử lại sau khi Deploy bản cập nhật.")
 
-@app.post("/api/global-solar-atlas")
-async def global_solar_atlas(request:Request):
+@app.post("/api/projects/{pid}/gsa-capture")
+async def capture_global_solar_atlas(pid:str,request:Request):
     auth(request)
-    token=os.getenv("SOLARGIS_API_TOKEN","").strip()
-    if not token:
-        raise HTTPException(503,"Chưa cấu hình SOLARGIS_API_TOKEN trong Render Environment. Cần token Solargis LTA API có quyền truy cập vị trí công trình.")
+    import re, time
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+    p=await request.json()
     try:
-        p=await request.json()
         lat=float(p.get("lat")); lon=float(p.get("lon"))
-        if not (-90<=lat<=90 and -180<=lon<=180): raise HTTPException(400,"Tọa độ không hợp lệ.")
-        tilt=max(0,min(90,float(p.get("tilt",20))))
-        azimuth=float(p.get("azimuth",180))%360
-        xml=f'''<calculateRequest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:geo="http://geomodel.eu/schema/common/geo" xmlns:pv="http://geomodel.eu/schema/common/pv" xmlns="http://geomodel.eu/schema/ws/pvplanner">
-        <site lat="{lat}" lng="{lon}"><pv:geometry xsi:type="pv:GeometryFixedOneAngle" azimuth="{azimuth}" tilt="{tilt}"/><pv:system installedPower="{max(0.1,float(p.get("system_capacity",1)))}" installationType="ROOF_MOUNTED" availability="99"><pv:module type="CSI"/><pv:inverter><pv:efficiency xsi:type="pv:EfficiencyConstant" percent="97"/></pv:inverter><pv:losses dc="5.5" ac="1.5"/></pv:system></site></calculateRequest>'''
-        resp=requests.post("https://solargis.info/ws/rest/pvplanner/calculate",params={"key":token},data=xml.encode("utf-8"),headers={"Content-Type":"application/xml"},timeout=60)
-        if not resp.ok: raise HTTPException(resp.status_code if resp.status_code in (400,401,403,429,500) else 502,"Solargis API trả lỗi HTTP "+str(resp.status_code)+": "+resp.text[:300])
-        import xml.etree.ElementTree as ET
-        root=ET.fromstring(resp.text)
-        def local(tag): return tag.split("}")[-1].split(":")[-1]
-        nodes={local(e.tag):e for e in root.iter()}
-        def yearly(node_name,attr="yearly"):
-            e=nodes.get(node_name)
-            if e is None: return None
-            v=e.attrib.get(attr)
-            try: return float(v) if v not in (None,"") else None
-            except ValueError: return None
-        def textval(node_name):
-            e=nodes.get(node_name)
-            return (e.text or "").strip() if e is not None else ""
-        horizon=textval("horizon")
-        horizon_svg=""
-        if horizon:
-            pts=[]
-            for pair in horizon.split():
-                try:
-                    a,h=map(float,pair.split(":")); x=40+a/360*320; y=150-h/25*110; pts.append(f"{x:.1f},{max(25,min(150,y)):.1f}")
-                except Exception: pass
-            if pts: horizon_svg='<svg viewBox="0 0 400 190" role="img" aria-label="Đường chân trời theo phương vị"><rect x="40" y="25" width="320" height="125" fill="#fff2ad"/><polyline points="'+ " ".join(pts)+'" fill="none" stroke="#e44" stroke-width="2"/><path d="M40 150H360" stroke="#667" /><text x="40" y="178" font-size="11">Bắc</text><text x="190" y="178" font-size="11">Nam</text><text x="345" y="178" font-size="11">Bắc</text></svg>'
-        return {"pvout":yearly("Esm"),"dni":yearly("Dnim"),"ghi":yearly("Ghm"),"dif":(yearly("Dhd")*365.25 if yearly("Dhd") is not None else None),"gti":yearly("Gim"),"opta":yearly("optimum","fixed"),"temp":yearly("Td"),"elevation":(float(nodes["terrain"].attrib["elevation"]) if nodes.get("terrain") is not None and nodes["terrain"].attrib.get("elevation") else None),"horizon_svg":horizon_svg,"horizon":horizon,"source":"Solargis LTA API"}
+        if not (-90<=lat<=90 and -180<=lon<=180):
+            raise HTTPException(400,"Tọa độ không hợp lệ.")
+    except (TypeError,ValueError):
+        raise HTTPException(400,"Vui lòng nhập tọa độ hợp lệ.")
+    check=sb_request("GET",db("projects"),params={"id":f"eq.{pid}","select":"id"}).json()
+    if not check: raise HTTPException(404,"Hãy lưu dự án trước khi chụp ảnh.")
+    url=f"https://globalsolaratlas.info/map?c={lat},{lon},10"
+    labels=["Thông số bức xạ & PV","Bản đồ vị trí công trình","Horizon & Sunpath","Bản đồ tiềm năng PVOUT"]
+    try:
+        with sync_playwright() as playwright:
+            browser=playwright.chromium.launch(headless=True,args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu"])
+            page=browser.new_page(viewport={"width":1600,"height":1100},device_scale_factor=1)
+            page.goto(url,wait_until="domcontentloaded",timeout=90000)
+            try: page.wait_for_load_state("networkidle",timeout=25000)
+            except PlaywrightTimeoutError: pass
+            page.wait_for_timeout(18000)
+            # Chọn các vùng hiển thị lớn có nội dung; loại bỏ header/footer và phần tử trùng lặp.
+            candidates=page.evaluate("""() => {
+              const nodes=[...document.querySelectorAll('section,article,main,canvas,svg,img,[class*=panel],[class*=card],[class*=widget],[class*=map]')];
+              return nodes.map((e,i)=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);
+                return {i,tag:e.tagName,cls:String(e.className||'').slice(0,160),text:(e.innerText||e.getAttribute('aria-label')||'').slice(0,500),
+                  x:r.x+scrollX,y:r.y+scrollY,w:r.width,h:r.height,display:s.display,visibility:s.visibility};
+              }).filter(x=>x.w>=280&&x.h>=150&&x.w<innerWidth*1.1&&x.h<innerHeight*2.5&&x.display!=='none'&&x.visibility!=='hidden');
+            }""")
+            # Ưu tiên các vùng có nhãn/đồ họa đặc trưng; fallback dùng 4 vùng lớn khác nhau.
+            groups=[
+              re.compile(r'PVOUT|GHI|DNI|GTI|irradiation|specific yield|annual',re.I),
+              re.compile(r'map|satellite|location|site',re.I),
+              re.compile(r'horizon|sunpath|sun path',re.I),
+              re.compile(r'PVOUT|potential|photovoltaic',re.I)
+            ]
+            chosen=[]
+            for idx,pat in enumerate(groups):
+                ranked=[]
+                for c in candidates:
+                    if any(abs(c["x"]-q["x"])<30 and abs(c["y"]-q["y"])<30 for q in chosen): continue
+                    score=(1200 if pat.search(c["text"]+" "+c["cls"]) else 0)+min(c["w"]*c["h"]/10000,100)
+                    if idx==1 and ("map" in c["cls"].lower() or c["tag"] in ("CANVAS","IMG")): score+=80
+                    if idx==2 and ("svg"==c["tag"].lower() or "horizon" in c["cls"].lower()): score+=100
+                    if score>0: ranked.append((score,c))
+                if ranked: chosen.append(max(ranked,key=lambda x:x[0])[1])
+            # If Atlas renders as a single dashboard, capture four distinct large visual regions.
+            if len(chosen)<4:
+                for c in sorted(candidates,key=lambda x:x["w"]*x["h"],reverse=True):
+                    if not any(abs(c["x"]-q["x"])<35 and abs(c["y"]-q["y"])<35 for q in chosen):
+                        chosen.append(c)
+                    if len(chosen)>=4: break
+            if len(chosen)<4:
+                browser.close()
+                raise HTTPException(502,"Global Solar Atlas chưa hiển thị đủ 4 vùng có thể chụp. Có thể trang đã thay đổi giao diện hoặc chặn truy cập tự động.")
+            # Screenshot từng vùng qua bounding box, kèm giới hạn kích thước để tránh ảnh quá lớn.
+            images=[]
+            for i,c in enumerate(chosen[:4]):
+                x=max(0,int(c["x"])); y=max(0,int(c["y"])); w=min(int(c["w"]),1600); h=min(int(c["h"]),1100)
+                page.evaluate("(y)=>window.scrollTo(0,y)",y)
+                page.wait_for_timeout(700)
+                data=page.screenshot(type="png",clip={"x":x,"y":max(0,int(c["y"]-y)),"width":max(1,w),"height":max(1,h)})
+                images.append(data)
+            browser.close()
+        saved=[]
+        for i,data in enumerate(images):
+            fid=str(uuid.uuid4()); filename=f"global-solar-atlas-{i+1}.png"; path=storage_path(pid,fid,filename)
+            sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),data=data,headers={"Content-Type":"image/png","x-upsert":"true"})
+            try:
+                sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":filename,"path":path},headers={"Prefer":"return=minimal"})
+            except Exception:
+                sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]})
+                raise
+            saved.append({"id":fid,"name":filename,"label":labels[i]})
+        return {"images":saved,"source_url":url,"count":len(saved)}
     except HTTPException: raise
-    except requests.RequestException as exc:
-        print(f"Solargis LTA connection error: {type(exc).__name__}: {exc}",flush=True)
-        raise HTTPException(502,"Không kết nối được Solargis LTA API.")
     except Exception as exc:
-        print(f"Solargis LTA parse error: {type(exc).__name__}: {exc}",flush=True)
-        raise HTTPException(502,"Không đọc được dữ liệu trả về từ Solargis LTA API.")
-
+        print(f"Global Solar Atlas capture error: {type(exc).__name__}: {exc}",flush=True)
+        raise HTTPException(502,"Không thể tự động chụp Global Solar Atlas. Kiểm tra Render Logs; có thể Render Free thiếu bộ nhớ hoặc thiếu thư viện trình duyệt.")
+    
 @app.get("/api/projects")
 def projects(request:Request):
     auth(request)
