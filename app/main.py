@@ -663,7 +663,7 @@ async def create_presentation_report(pid:str,request:Request):
             pttc_wb.close()
         if accumulated is None:
             raise HTTPException(409,"Ô present!R133 chưa có kết quả. Hãy tạo lại báo cáo PTTC rồi xuất PowerPoint.")
-        savings_text=f"{float(accumulated):.1f}".replace(".",",")
+        savings_text=f"{float(accumulated)/1000:.1f}".replace(".",",")
         pttc_read=load_workbook(io.BytesIO(pttc_bytes),data_only=True,read_only=True)
         try:
             annual_pttc=sum(float(pttc_read["draft "][f"G{i}"].value or 0) for i in range(53,65))
