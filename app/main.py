@@ -646,7 +646,7 @@ async def create_presentation_report(pid:str,request:Request):
         slide3=prs.slides[2]
         percent_text=fmt(self_use,1).rstrip("0").rstrip(",")+"%"
         if len(slide3.shapes)>7 and slide3.shapes[7].has_text_frame:
-            numeric_runs=[run for run in slide3.shapes[7].text_frame.paragraphs[2].runs if re.search(r"\\d",run.text)]
+            numeric_runs=[run for run in slide3.shapes[7].text_frame.paragraphs[2].runs if re.search(r"\d",run.text)]
             if numeric_runs:
                 numeric_runs[0].text=percent_text
                 for run in numeric_runs[1:]: run.text=""
@@ -703,7 +703,7 @@ async def create_presentation_report(pid:str,request:Request):
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của hệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
         # Slides 7 onward are intentionally kept unchanged for this phase.
-        # Replace the actual-roof and PV-layout photos in slides 4 and 10; keep all original geometry/cropping.
+        # Replace the actual-roof and PV-layout photos on slide 4; keep original geometry/cropping.
         uploads=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"id,name,path","order":"name.asc"}).json()
         def image_group(prefix):
             selected=[u for u in uploads if str(u.get("name","")).startswith(prefix+"__")][:4]
