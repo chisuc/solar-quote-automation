@@ -511,6 +511,44 @@ def _ppt_set_cell_text(cell,text):
     """Update a table cell while keeping its original paragraph/run styles."""
     _ppt_set_shape_text(cell,text)
 
+def _ppt_monthly_production_chart(workbook_bytes):
+    """Render monthly production data used by the PTTC sheet's production chart."""
+    from PIL import Image, ImageDraw, ImageFont
+    wb=load_workbook(io.BytesIO(workbook_bytes),data_only=True,read_only=True)
+    try:
+        ws=wb["draft "]
+        vals=[float(ws[f"G{i}"].value or 0) for i in range(53,65)]
+    finally:
+        wb.close()
+    W,H=1500,900
+    im=Image.new("RGB",(W,H),"white")
+    d=ImageDraw.Draw(im)
+    try:
+        font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",22)
+        small=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",18)
+        bold=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",22)
+    except Exception:
+        font=small=bold=ImageFont.load_default()
+    left,right,top,bottom=115,45,55,100
+    ymax=max(vals)*1.15 if vals else 1
+    for k in range(5):
+        v=ymax*k/4
+        y=H-bottom-int((H-top-bottom)*k/4)
+        d.line((left,y,W-right,y),fill=(218,218,218),width=2)
+        d.text((left-15,y-13),f"{v:,.0f}",font=small,fill=(40,40,40),anchor="ra")
+    step=(W-left-right)/12
+    bw=step*.58
+    for i,v in enumerate(vals):
+        x=left+i*step+(step-bw)/2
+        bh=(H-top-bottom)*v/ymax
+        y=H-bottom-bh
+        d.rectangle((x,y,x+bw,H-bottom),fill=(247,151,68))
+        d.text((x+bw/2,y-30),f"{v:.0f}",font=small,fill=(35,35,35),anchor="mm")
+        d.text((x+bw/2,H-bottom+28),str(i+1),font=small,fill=(35,35,35),anchor="mm")
+    d.text((left,H-42),"Tháng",font=font,fill=(20,20,20))
+    d.text((22,top),"kWh",font=bold,fill=(20,20,20))
+    out=io.BytesIO(); im.save(out,format="PNG",optimize=True); return out.getvalue()
+
 def _ppt_replace_picture(slide,shape,image_bytes):
     image_part,rid=slide.part.get_or_add_image_part(io.BytesIO(image_bytes))
     blip=shape._element.blipFill.blip
@@ -685,6 +723,15 @@ async def create_presentation_report(pid:str,request:Request):
             collage=_ppt_photo_collage(images,ratio)
             if collage: _ppt_replace_picture(slide,shape,collage)
         replace_at(3,8,real); replace_at(3,9,layout)
+        # Slide 6: production chart rendered from the monthly series used by PTTC.
+        if len(prs.slides[5].shapes)>10 and prs.slides[5].shapes[10].shape_type==MSO_SHAPE_TYPE.PICTURE:
+            _ppt_replace_picture(prs.slides[5],prs.slides[5].shapes[10],_ppt_monthly_production_chart(pttc_bytes))
+        # Four Global Solar Atlas captures occupy the four original picture frames on slide 6.
+        for image_no,shape_index in enumerate((11,12,13,14),start=1):
+            found=[u for u in uploads if str(u.get("name",""))==f"global-solar-atlas-{image_no}.png"]
+            if found and shape_index<len(prs.slides[5].shapes):
+                obj=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(found[-1]["path"],safe="/"))
+                _ppt_replace_picture(prs.slides[5],prs.slides[5].shapes[shape_index],obj.content)
         # Save the deck while preserving the original theme, master, layout, and all static slides.
         out=io.BytesIO(); prs.save(out); generated=out.getvalue()
     except HTTPException: raise
