@@ -244,6 +244,8 @@ async def capture_global_solar_atlas(pid:str,request:Request):
                 data=page.screenshot(type="png",clip={"x":max(0,int(box["x"])),"y":max(0,int(box["y"])),"width":max(1,min(int(box["width"]),1600)),"height":max(1,min(int(box["height"]),1100))})
                 images.append(data)
             browser.close()
+        if len(images)!=4:
+            raise HTTPException(502,f"Chỉ chụp được {len(images)}/4 khu vực trên Global Solar Atlas; chưa lưu bộ ảnh chưa đầy đủ.")
         saved=[]
         for i,data in enumerate(images):
             fid=str(uuid.uuid4()); filename=f"global-solar-atlas-{i+1}.png"; path=storage_path(pid,fid,filename)
