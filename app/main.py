@@ -532,7 +532,8 @@ async def create_presentation_report(pid:str,request:Request):
                     "diện tích mái":(fmt(roof,0)+" m²") if roof else "",
                     "kết cấu mái":val("roofType")
                 }
-                for row in table.rows[1:]:
+                for row_index in range(1, len(table.rows)):
+                    row=table.rows[row_index]
                     label=(row.cells[0].text or "").strip().lower()
                     for key,value in mapping.items():
                         if key in label and value:
