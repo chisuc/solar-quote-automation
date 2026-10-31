@@ -90,12 +90,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
 <div class='field'><label>Tỷ lệ tiêu thụ ban ngày (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
 <div class='field'><label>Tỷ lệ tiêu thụ ban đêm (%)</label><input id='billNightShare' type='number' readonly value='35'></div>
-<div class='field'><label>Mức đáp ứng điện ban ngày bằng PV (%)</label><input id='billPvCoverage' type='number' min='0' max='100' step='1' value='80'></div>
-<div class='field'><label>Mức đáp ứng điện ban đêm bằng pin (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='70'></div>
 <div class='field'><label>Số giờ nắng đỉnh PSH (h/ngày)</label><input id='billPsh' type='number' min='.5' max='8' step='.1' value='4'></div>
-<div class='field'><label>Hiệu suất hệ thống PR (%)</label><input id='billPr' type='number' min='50' max='95' step='1' value='80'></div>
 <div class='field'><label>Độ sâu xả pin DoD (%)</label><input id='billDod' type='number' min='50' max='100' step='1' value='90'></div>
-<div class='field'><label>Hiệu suất xả/chu trình pin (%)</label><input id='billBattEff' type='number' min='50' max='100' step='1' value='90'></div>
 </div>
 <div class='row'><button class='btn' type='button' onclick='calculateLoadSizing()'>Tính điện năng & đề xuất</button><button class='btn alt' type='button' onclick='applyLoadSizing()'>Áp dụng vào cấu hình dự án</button></div>
 <div id='loadSizingStatus' class='muted'>Chưa tính toán.</div>
@@ -181,7 +177,7 @@ function calculateLoadSizing(){
   if(monthly<=0||days<=0)throw new Error('Nhập tổng điện năng hóa đơn và số ngày hợp lệ.');
   if(dayShare<0||dayShare>100)throw new Error('Tỷ lệ ban ngày phải từ 0 đến 100%.');
   const daily=monthly/days,day=daily*dayShare/100,night=daily-day;
-  const psh=n('billPsh'),pr=n('billPr')/100,pvCoverage=n('billPvCoverage')/100,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,eff=n('billBattEff')/100;
+  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=0.70,dod=n('billDod')/100,eff=0.90;
   if(psh<=0||pr<=0||dod<=0||eff<=0)throw new Error('Kiểm tra lại các giả định kỹ thuật.');
   const pv=day*pvCoverage/(psh*pr);
   const nightSupply=night*nightCoverage;
@@ -217,7 +213,7 @@ async function readBill(){
  }catch(e){$('billReadStatus').textContent=e.message}
 }
 $('billDayShare').addEventListener('input',()=>{calcBillNightShare();loadSizingResult=null});
-for(const id of ['billMonthKwh','billDays','billPvCoverage','billNightCoverage','billPsh','billPr','billDod','billBattEff'])$(id).addEventListener('input',()=>{loadSizingResult=null});
+for(const id of ['billMonthKwh','billDays','billPsh','billDod'])$(id).addEventListener('input',()=>{loadSizingResult=null});
 
 async function api(u,opt={}){let r=await fetch(u,opt);if(r.status===401){location='/login-page';throw Error('Cần đăng nhập lại')}if(!r.ok)throw Error((await r.json()).detail||'Có lỗi');return r.json()}
 async function save(){try{let p=payload();p.folderId=currentFolderId;let r=pid?await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}):await api('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});pid=r.id;$('status').textContent='Đã lưu dự án vào thư mục.';list()}catch(e){$('status').textContent=e.message}}
