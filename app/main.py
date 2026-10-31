@@ -209,7 +209,8 @@ async def capture_global_solar_atlas(pid:str,request:Request):
               const texts=[...document.querySelectorAll('body *')].filter(e=>e.children.length===0&&/Map data/i.test(e.textContent||''));
               let table=null;
               for(const t of texts){let p=t;for(let n=0;n<7&&p;n++,p=p.parentElement){if(visible(p)&&/PVOUT specific/i.test(p.innerText||'')&&/DNI/i.test(p.innerText||'')&&/GHI/i.test(p.innerText||'')){table=p;break}}if(table)break}
-              if(table){let p=table;while(p.parentElement&&visible(p.parentElement)&&p.parentElement.getBoundingClientRect().width<innerWidth*.9&&p.parentElement.getBoundingClientRect().height<innerHeight*1.1)p=p.parentElement;table=p;mark(table,'metrics')}
+              // Chỉ chụp card Map data chứa các chỉ số; KHÔNG mở rộng lên toàn bộ Site Info.
+              if(table){mark(table,'metrics')}
               // 2,4) Hai Leaflet maps: map vệ tinh thường xuất hiện trước, PVOUT map sau.
               const maps=[...document.querySelectorAll('.leaflet-container')].filter(visible);
               if(maps[0])mark(maps[0],'satellite');
