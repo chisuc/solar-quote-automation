@@ -150,7 +150,7 @@ async def pvwatts(request:Request):
         }
         if int(p.get("use_wf_albedo",1))==1: params["use_wf_albedo"]=1
         elif p.get("albedo") is not None: params["albedo"]=p["albedo"]
-        resp=requests.get("https://developer.nrel.gov/api/pvwatts/v8.json",params=params,timeout=60)
+        resp=requests.get("https://developer.nlr.gov/api/pvwatts/v8.json",params=params,timeout=60)
         try: data=resp.json()
         except ValueError: raise HTTPException(502,"PVWatts trả về dữ liệu không hợp lệ.")
         if resp.status_code>=400 or data.get("errors"):
@@ -165,8 +165,9 @@ async def pvwatts(request:Request):
                 "station":station.get("city") or station.get("location"),
                 "warnings":data.get("warnings",[]),"inputs":data.get("inputs",{})}
     except HTTPException: raise
-    except requests.RequestException:
-        raise HTTPException(502,"Không kết nối được máy chủ PVWatts. Vui lòng thử lại.")
+    except requests.RequestException as exc:
+        print(f"PVWatts connection error: {type(exc).__name__}: {exc}", flush=True)
+        raise HTTPException(502,"Render không kết nối được máy chủ PVWatts (NLR). Đã ghi chi tiết lỗi vào Render Logs; vui lòng thử lại sau khi Deploy bản cập nhật.")
 
 @app.get("/api/projects")
 def projects(request:Request):
