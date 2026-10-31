@@ -176,6 +176,7 @@ async function runPVWatts(){try{if(!parseCoordinates())throw Error('Vui lòng ki
 let loadSizingResult=null;
 function calcBillNightShare(){let d=Math.max(0,Math.min(100,n('billDayShare')));$('billNightShare').value=(100-d).toFixed(1);if($('billNightShare').value.endsWith('.0'))$('billNightShare').value=(100-d).toFixed(0)}
 function calculateLoadSizing(){
+ try{
   const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
   if(monthly<=0||days<=0)throw new Error('Nhập tổng điện năng hóa đơn và số ngày hợp lệ.');
   if(dayShare<0||dayShare>100)throw new Error('Tỷ lệ ban ngày phải từ 0 đến 100%.');
@@ -189,11 +190,12 @@ function calculateLoadSizing(){
   $('resDaily').textContent=daily.toFixed(1);$('resDay').textContent=day.toFixed(1);$('resNight').textContent=night.toFixed(1);$('resPv').textContent=pv.toFixed(1);$('resBattery').textContent=battery.toFixed(1);$('resNightSupply').textContent=nightSupply.toFixed(1);
   $('loadSizingAssumptions').textContent='Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; pin DoD '+(dod*100).toFixed(0)+'%, hiệu suất '+(eff*100).toFixed(0)+'%. Đây là sizing sơ bộ theo điện năng trung bình, cần kiểm tra biểu đồ phụ tải 15–30 phút và giới hạn inverter trước khi chốt thiết kế.';
   $('loadSizingResults').style.display='block';$('loadSizingStatus').textContent='Đã tính toán. Kiểm tra lại dữ liệu hóa đơn và các giả định trước khi áp dụng.';return loadSizingResult;
+ }catch(e){$('loadSizingStatus').textContent=e.message;loadSizingResult=null;return null}
 }
 function applyLoadSizing(){
  try{
   const r=loadSizingResult||calculateLoadSizing();
-  $('load').value=Math.round(r.monthlyKwh);
+  $('load').value=Number(r.monthlyKwh.toFixed(2));
   const panelW=n('panelW')||625;$('panelQty').value=Math.ceil(r.pvKwp*1000/panelW);
   $('batKwh').value=r.batteryKwh.toFixed(1);$('batQty').value=1;
   $('usagePattern').value='Tỷ lệ tiêu thụ ban ngày '+r.dayShare.toFixed(1)+'%, ban đêm '+r.nightShare.toFixed(1)+'%; điện năng trung bình ban ngày '+r.dayKwh.toFixed(1)+' kWh/ngày, ban đêm '+r.nightKwh.toFixed(1)+' kWh/ngày.';
@@ -214,7 +216,7 @@ async function readBill(){
   $('loadSizingStatus').textContent='Dữ liệu nhận diện chỉ là gợi ý; hãy đối chiếu trực tiếp hóa đơn trước khi tính.';
  }catch(e){$('billReadStatus').textContent=e.message}
 }
-$('billDayShare').addEventListener('input',calcBillNightShare);
+$('billDayShare').addEventListener('input',()=>{calcBillNightShare();loadSizingResult=null});
 for(const id of ['billMonthKwh','billDays','billPvCoverage','billNightCoverage','billPsh','billPr','billDod','billBattEff'])$(id).addEventListener('input',()=>{loadSizingResult=null});
 
 async function api(u,opt={}){let r=await fetch(u,opt);if(r.status===401){location='/login-page';throw Error('Cần đăng nhập lại')}if(!r.ok)throw Error((await r.json()).detail||'Có lỗi');return r.json()}
