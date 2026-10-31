@@ -461,6 +461,7 @@ def _ppt_set_paragraph_text(paragraph,text):
 
 def _ppt_set_shape_text(shape,text):
     """Set newline-separated content without flattening the template's formatting."""
+    from copy import deepcopy
     tf=shape.text_frame
     lines=str(text).split("\\n")
     paragraphs=list(tf.paragraphs)
