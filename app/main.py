@@ -177,8 +177,8 @@ async def pvwatts(request:Request):
 @app.post("/api/projects/{pid}/gsa-capture")
 async def capture_global_solar_atlas(pid:str,request:Request):
     auth(request)
-    import re, time
-    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+    import re
+    from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
     p=await request.json()
     try:
         lat=float(p.get("lat")); lon=float(p.get("lon"))
@@ -191,22 +191,20 @@ async def capture_global_solar_atlas(pid:str,request:Request):
     url=f"https://globalsolaratlas.info/detail?c={lat},{lon},10&m=site&s={lat},{lon}"
     labels=["Thông số bức xạ & PV","Bản đồ vị trí công trình","Horizon & Sunpath","Bản đồ tiềm năng PVOUT"]
     try:
-        with sync_playwright() as playwright:
-            browser=playwright.chromium.launch(headless=True,args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-extensions","--single-process","--no-zygote"])
-            page=browser.new_page(viewport={"width":1600,"height":1100},device_scale_factor=1)
-            page.goto(url,wait_until="domcontentloaded",timeout=90000)
-            try: page.wait_for_load_state("networkidle",timeout=25000)
+        async with async_playwright() as playwright:
+            browser=await playwright.chromium.launch(headless=True,args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-extensions"])
+            page=await browser.new_page(viewport={"width":1600,"height":1100},device_scale_factor=1)
+            await page.goto(url,wait_until="domcontentloaded",timeout=90000)
+            try: await page.wait_for_load_state("networkidle",timeout=25000)
             except PlaywrightTimeoutError: pass
-            page.wait_for_timeout(18000)
-            # Chọn các vùng hiển thị lớn có nội dung; loại bỏ header/footer và phần tử trùng lặp.
-            candidates=page.evaluate("""() => {
+            await page.wait_for_timeout(18000)
+            candidates=await page.evaluate("""() => {
               const nodes=[...document.querySelectorAll('section,article,main,canvas,svg,img,[class*=panel],[class*=card],[class*=widget],[class*=map]')];
               return nodes.map((e,i)=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);
                 return {i,tag:e.tagName,cls:String(e.className||'').slice(0,160),text:(e.innerText||e.getAttribute('aria-label')||'').slice(0,500),
                   x:r.x+scrollX,y:r.y+scrollY,w:r.width,h:r.height,display:s.display,visibility:s.visibility};
               }).filter(x=>x.w>=280&&x.h>=150&&x.w<innerWidth*1.1&&x.h<innerHeight*2.5&&x.display!=='none'&&x.visibility!=='hidden');
             }""")
-            # Ưu tiên các vùng có nhãn/đồ họa đặc trưng; fallback dùng 4 vùng lớn khác nhau.
             groups=[
               re.compile(r'PVOUT|GHI|DNI|GTI|irradiation|specific yield|annual',re.I),
               re.compile(r'map|satellite|location|site',re.I),
@@ -220,30 +218,26 @@ async def capture_global_solar_atlas(pid:str,request:Request):
                     if any(abs(c["x"]-q["x"])<30 and abs(c["y"]-q["y"])<30 for q in chosen): continue
                     score=(1200 if pat.search(c["text"]+" "+c["cls"]) else 0)+min(c["w"]*c["h"]/10000,100)
                     if idx==1 and ("map" in c["cls"].lower() or c["tag"] in ("CANVAS","IMG")): score+=80
-                    if idx==2 and ("svg"==c["tag"].lower() or "horizon" in c["cls"].lower()): score+=100
+                    if idx==2 and (c["tag"].lower()=="svg" or "horizon" in c["cls"].lower()): score+=100
                     if score>0: ranked.append((score,c))
                 if ranked: chosen.append(max(ranked,key=lambda x:x[0])[1])
-            # If Atlas renders as a single dashboard, capture four distinct large visual regions.
             if len(chosen)<4:
                 for c in sorted(candidates,key=lambda x:x["w"]*x["h"],reverse=True):
                     if not any(abs(c["x"]-q["x"])<35 and abs(c["y"]-q["y"])<35 for q in chosen):
                         chosen.append(c)
                     if len(chosen)>=4: break
             if len(chosen)<4:
-                browser.close()
-                raise HTTPException(502,"Global Solar Atlas chưa hiển thị đủ 4 vùng có thể chụp. Có thể trang đã thay đổi giao diện hoặc chặn truy cập tự động.")
-            # Screenshot từng vùng qua bounding box, kèm giới hạn kích thước để tránh ảnh quá lớn.
+                await browser.close()
+                raise HTTPException(502,"Global Solar Atlas chưa hiển thị đủ 4 vùng có thể chụp.")
             images=[]
-            for i,c in enumerate(chosen[:4]):
-                x=max(0,int(c["x"])); y=max(0,int(c["y"])); w=min(int(c["w"]),1600); h=min(int(c["h"]),1100)
-                page.evaluate("(y)=>window.scrollTo(0,y)",y)
-                page.wait_for_timeout(700)
-                box=page.evaluate("(idx)=>{const a=[...document.querySelectorAll('section,article,main,canvas,svg,img,[class*=panel],[class*=card],[class*=widget],[class*=map]')];const e=a[idx];if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}}",c["i"])
-                if not box or box["width"]<1 or box["height"]<1:
-                    continue
-                data=page.screenshot(type="png",clip={"x":max(0,int(box["x"])),"y":max(0,int(box["y"])),"width":max(1,min(int(box["width"]),1600)),"height":max(1,min(int(box["height"]),1100))})
+            for c in chosen[:4]:
+                await page.evaluate("(y)=>window.scrollTo(0,y)",c["y"])
+                await page.wait_for_timeout(700)
+                box=await page.evaluate("""(idx)=>{const a=[...document.querySelectorAll('section,article,main,canvas,svg,img,[class*=panel],[class*=card],[class*=widget],[class*=map]')];const e=a[idx];if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}}""",c["i"])
+                if not box or box["width"]<1 or box["height"]<1: continue
+                data=await page.screenshot(type="png",clip={"x":max(0,int(box["x"])),"y":max(0,int(box["y"])),"width":max(1,min(int(box["width"]),1600)),"height":max(1,min(int(box["height"]),1100))})
                 images.append(data)
-            browser.close()
+            await browser.close()
         if len(images)!=4:
             raise HTTPException(502,f"Chỉ chụp được {len(images)}/4 khu vực trên Global Solar Atlas; chưa lưu bộ ảnh chưa đầy đủ.")
         saved=[]
@@ -260,7 +254,7 @@ async def capture_global_solar_atlas(pid:str,request:Request):
     except HTTPException: raise
     except Exception as exc:
         print(f"Global Solar Atlas capture error: {type(exc).__name__}: {exc}",flush=True)
-        raise HTTPException(502,"Không thể tự động chụp Global Solar Atlas. Kiểm tra Render Logs; có thể Render Free thiếu bộ nhớ hoặc thiếu thư viện trình duyệt.")
+        raise HTTPException(502,f"Global Solar Atlas capture failed: {type(exc).__name__}: {str(exc)[:350]}")
     
 @app.get("/api/projects")
 def projects(request:Request):
