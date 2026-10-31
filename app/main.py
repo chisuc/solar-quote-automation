@@ -51,13 +51,31 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='panel'><h3>Khách hàng & công trình</h3><div class='grid'><div class='field'><label>Tên dự án</label><input id='projectName'></div><div class='field'><label>Khách hàng / công ty</label><input id='customer'></div><div class='field'><label>Người liên hệ</label><input id='contact'></div><div class='field'><label>Số điện thoại</label><input id='phone'></div><div class='field'><label>Địa chỉ</label><input id='address'></div><div class='field'><label>Ngày báo giá</label><input id='date' type='date'></div><div class='field'><label>Diện tích mái (m²)</label><input id='roof' type='number'></div><div class='field'><label>Kết cấu mái</label><select id='roofType'><option>Mái tôn</option><option>Mái bê tông</option><option>Mái ngói</option></select></div></div></div>
 <div class='panel'><h3>Cấu hình hệ thống</h3><div class='grid'><div class='field'><label>Thương hiệu tấm pin</label><input id='panelBrand'></div><div class='field'><label>Công suất tấm pin (Wp)</label><input id='panelW' type='number' value='625'></div><div class='field'><label>Số lượng tấm</label><input id='panelQty' type='number' value='30'></div><div class='field'><label>Công suất PV (kWp)</label><input id='pv' readonly></div><div class='field'><label>Inverter / Model</label><input id='invModel'></div><div class='field'><label>Công suất inverter (kW)</label><input id='invKw' type='number'></div><div class='field'><label>Số pha</label><select id='phase'><option>1 pha</option><option>3 pha</option></select></div><div class='field'><label>Pin lưu trữ / Model</label><input id='batModel'></div><div class='field'><label>Dung lượng mỗi bộ (kWh)</label><input id='batKwh' type='number' step='.01'></div><div class='field'><label>Số lượng bộ pin</label><input id='batQty' type='number' value='0'></div><div class='field'><label>Tổng dung lượng pin (kWh)</label><input id='batTotal' readonly></div></div></div>
 <div class='panel'><h3>Điện năng & báo giá</h3><div class='grid'><div class='field'><label>Tiêu thụ tháng (kWh)</label><input id='load' type='number'></div><div class='field'><label>Sản lượng ĐMT năm (kWh)</label><input id='annual' type='number'></div><div class='field'><label>Tự tiêu thụ dự kiến (%)</label><input id='self' type='number' value='80'></div><div class='field'><label>Đơn giá điện (đ/kWh)</label><input id='price' type='number'></div><div class='field'><label>Tổng trước VAT (VNĐ)</label><input id='pre' type='number'></div><div class='field'><label>VAT (%)</label><input id='vat' type='number' value='8'></div><div class='field'><label>Tiền VAT</label><input id='vatMoney' readonly></div><div class='field'><label>Tổng sau VAT</label><input id='grand' readonly></div></div></div>
+<div class='panel'><h3>Mô phỏng sản lượng PVWatts V8</h3><p class='muted'>Nhập tọa độ và thông số mô phỏng, sau đó bấm lấy dữ liệu trực tiếp từ PVWatts.</p><div class='grid'>
+<div class='field'><label>Vĩ độ (Latitude)</label><input id='lat' type='number' step='any' placeholder='Ví dụ: 10.98'></div>
+<div class='field'><label>Kinh độ (Longitude)</label><input id='lon' type='number' step='any' placeholder='Ví dụ: 106.65'></div>
+<div class='field'><label>DC System Size (kW)</label><input id='pvSystemSize' type='number' step='.01' placeholder='Tự lấy từ công suất PV nếu để trống'></div>
+<div class='field'><label>Module Type</label><select id='moduleType'><option value='0'>Standard</option><option value='1'>Premium</option><option value='2'>Thin film</option></select></div>
+<div class='field'><label>Array Type</label><select id='arrayType'><option value='0' selected>Fixed - Open Rack</option><option value='1'>Fixed - Roof Mounted</option><option value='2'>1-Axis</option><option value='3'>1-Axis Backtracking</option><option value='4'>2-Axis</option></select></div>
+<div class='field'><label>Tilt (độ)</label><input id='tilt' type='number' value='20' step='.1'></div>
+<div class='field'><label>Azimuth (độ)</label><input id='azimuth' type='number' value='180' step='.1'></div>
+<div class='field'><label>System Losses (%)</label><input id='losses' type='number' value='14.08' step='.01'></div>
+<div class='field'><label>DC to AC Size Ratio</label><input id='dcAcRatio' type='number' value='1.2' step='.01'></div>
+<div class='field'><label>Inverter Efficiency (%)</label><input id='invEff' type='number' value='96' step='.1'></div>
+<div class='field'><label>Ground Coverage Ratio</label><input id='gcr' type='number' value='.4' step='.01'></div>
+<div class='field'><label>Albedo</label><select id='albedoMode'><option value='weather'>Theo dữ liệu thời tiết (Weather file)</option><option value='manual'>Nhập thủ công</option></select></div>
+<div class='field' id='albedoField' style='display:none'><label>Albedo (0–1)</label><input id='albedo' type='number' value='.2' step='.01'></div>
+</div><div class='row'><button class='btn' onclick='runPVWatts()'>Tính toán PVWatts</button><span id='pvStatus' class='muted'></span></div><div id='pvResult' class='muted'>Chưa có kết quả mô phỏng.</div></div>
 <div class='panel'><h3>Hồ sơ đầu vào</h3><input id='files' type='file' multiple><div class='row'><button class='btn' onclick='upload()'>Tải file lên máy chủ</button></div><div id='fileList' class='muted'></div></div>
 <div class='panel'><h3>Dự án đã lưu</h3><div class='row'><button class='btn' onclick='save()'>Lưu dự án</button><button class='btn alt' onclick='fresh()'>Dự án mới</button><button class='btn alt' onclick='exportJson()'>Xuất JSON</button></div><div id='projects'>Đang tải...</div><div id='status' class='muted'></div></div></main>
 <script>
-let pid=null;const ids=['projectName','customer','contact','phone','address','date','roof','roofType','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
+let pid=null,pvwattsResult=null;const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','customer','contact','phone','address','date','roof','roofType','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
 function calc(){let kw=n('panelW')*n('panelQty')/1000,v=n('pre')*n('vat')/100;$('pv').value=kw.toFixed(3);$('batTotal').value=(n('batKwh')*n('batQty')).toFixed(2);$('vatMoney').value=v.toFixed(0);$('grand').value=(n('pre')+v).toFixed(0)}
 document.addEventListener('input',e=>{if(e.target.tagName==='INPUT')calc()});
-function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined)$(k).value=o[k]});calc()}
+function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.pvwattsResult=pvwattsResult;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined)$(k).value=o[k]});pvwattsResult=o.pvwattsResult||null;renderPV();calc()}
+$('albedoMode').addEventListener('change',()=>{$('albedoField').style.display=$('albedoMode').value==='manual'?'block':'none'});
+function renderPV(){if(!pvwattsResult){$('pvResult').textContent='Chưa có kết quả mô phỏng.';return}let a=pvwattsResult.monthly||[];$('pvResult').innerHTML='<b>Sản lượng AC năm: '+Number(pvwattsResult.annual||0).toLocaleString('vi-VN',{maximumFractionDigits:0})+' kWh</b><br>'+a.map((v,i)=>['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'][i]+': '+Number(v).toLocaleString('vi-VN',{maximumFractionDigits:0})+' kWh').join(' · ')+'<br><small>Trạm thời tiết: '+esc(pvwattsResult.station||'Chưa có thông tin')+'</small>'}
+async function runPVWatts(){try{$('pvStatus').textContent='Đang kết nối PVWatts...';let body={lat:n('lat'),lon:n('lon'),system_capacity:n('pvSystemSize')||n('pv'),module_type:n('moduleType'),array_type:n('arrayType'),tilt:n('tilt'),azimuth:n('azimuth'),losses:n('losses'),dc_ac_ratio:n('dcAcRatio'),inv_eff:n('invEff'),gcr:n('gcr'),use_wf_albedo:$('albedoMode').value==='weather'?1:0};if($('albedoMode').value==='manual')body.albedo=n('albedo');let r=await api('/api/pvwatts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});pvwattsResult=r;$('annual').value=Math.round(r.annual||0);$('pvStatus').textContent='Mô phỏng thành công · PVWatts V'+r.version;renderPV()}catch(e){$('pvStatus').textContent='Không lấy được dữ liệu: '+e.message}}
 async function api(u,opt={}){let r=await fetch(u,opt);if(r.status===401){location='/login-page';throw Error('Cần đăng nhập lại')}if(!r.ok)throw Error((await r.json()).detail||'Có lỗi');return r.json()}
 async function save(){try{let p=payload(),r=pid?await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}):await api('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});pid=r.id;$('status').textContent='Đã lưu lên máy chủ.';list()}catch(e){$('status').textContent=e.message}}
 async function list(){let a=await api('/api/projects');$('projects').innerHTML=a.map(x=>`<div class='project'><span><b>${esc(x.name)}</b><br><small>${esc(x.customer||'')}</small></span><span><button class='btn alt' onclick=\"openP('${x.id}')\">Mở</button> <button class='btn alt' onclick=\"delP('${x.id}')\">Xóa</button></span></div>`).join('')||'Chưa có dự án'}
@@ -94,6 +112,48 @@ async def logout(request:Request):
 def home(request:Request):
     if request.session.get("user")!=USER: return RedirectResponse("/login-page",status_code=303)
     return PAGE
+
+@app.post("/api/pvwatts")
+async def pvwatts(request:Request):
+    auth(request)
+    api_key=os.getenv("NLR_API_KEY","").strip()
+    if not api_key:
+        raise HTTPException(503,"Máy chủ chưa cấu hình NLR_API_KEY trong Render Environment.")
+    try:
+        p=await request.json()
+        required=["lat","lon","system_capacity","module_type","array_type","tilt","azimuth","losses","dc_ac_ratio","inv_eff","gcr"]
+        for k in required:
+            if k not in p or p[k] is None: raise HTTPException(400,f"Thiếu thông số {k}.")
+        if not (-90 <= float(p["lat"]) <= 90) or not (-180 <= float(p["lon"]) <= 180):
+            raise HTTPException(400,"Tọa độ latitude/longitude không hợp lệ.")
+        if float(p["system_capacity"]) <= 0:
+            raise HTTPException(400,"DC System Size phải lớn hơn 0.")
+        params={
+            "api_key":api_key,"format":"json","lat":p["lat"],"lon":p["lon"],
+            "system_capacity":p["system_capacity"],"module_type":p["module_type"],
+            "array_type":p["array_type"],"tilt":p["tilt"],"azimuth":p["azimuth"],
+            "losses":p["losses"],"dc_ac_ratio":p["dc_ac_ratio"],
+            "inv_eff":p["inv_eff"],"gcr":p["gcr"],"timeframe":"monthly"
+        }
+        if int(p.get("use_wf_albedo",1))==1: params["use_wf_albedo"]=1
+        elif p.get("albedo") is not None: params["albedo"]=p["albedo"]
+        resp=requests.get("https://developer.nrel.gov/api/pvwatts/v8.json",params=params,timeout=60)
+        try: data=resp.json()
+        except ValueError: raise HTTPException(502,"PVWatts trả về dữ liệu không hợp lệ.")
+        if resp.status_code>=400 or data.get("errors"):
+            detail="; ".join(data.get("errors") or [f"PVWatts HTTP {resp.status_code}"])
+            raise HTTPException(422,detail[:600])
+        out=data.get("outputs",{})
+        monthly=out.get("ac_monthly",[])
+        if len(monthly)!=12: raise HTTPException(502,"PVWatts không trả đủ 12 giá trị sản lượng tháng.")
+        station=data.get("station_info",{})
+        return {"version":data.get("version"),"monthly":monthly,"annual":out.get("ac_annual"),
+                "solrad_monthly":out.get("solrad_monthly"),"solrad_annual":out.get("solrad_annual"),
+                "station":station.get("city") or station.get("location"),
+                "warnings":data.get("warnings",[]),"inputs":data.get("inputs",{})}
+    except HTTPException: raise
+    except requests.RequestException:
+        raise HTTPException(502,"Không kết nối được máy chủ PVWatts. Vui lòng thử lại.")
 
 @app.get("/api/projects")
 def projects(request:Request):
