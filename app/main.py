@@ -425,19 +425,67 @@ async def upload_presentation_template(request:Request,file:UploadFile=File(...)
     sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(PRESENTATION_TEMPLATE_PATH,safe="/"),data=data,headers={"Content-Type":"application/vnd.openxmlformats-officedocument.presentationml.presentation","x-upsert":"true"})
     return {"ok":True,"name":PRESENTATION_TEMPLATE_NAME,"slides":14}
 
+def _ppt_set_paragraph_text(paragraph,text):
+    """Replace paragraph text while retaining its paragraph and character styling."""
+    from copy import deepcopy
+    text=str(text)
+    runs=list(paragraph.runs)
+    if not runs:
+        paragraph.add_run().text=text
+        return
+    # Group adjacent runs with identical character formatting, so mixed bold/regular
+    # emphasis and font sizes in the source template are retained.
+    groups=[]
+    for run in runs:
+        f=run.font
+        sig=(f.name, f.size, f.bold, f.italic, f.underline,
+             f.color.type if f.color else None,
+             f.color.rgb if f.color and f.color.type and f.color.type==1 else None)
+        if groups and groups[-1][0]==sig:
+            groups[-1][1].append(run)
+        else:
+            groups.append((sig,[run]))
+    weights=[max(1,sum(len(r.text) for r in group)) for _,group in groups]
+    total=sum(weights)
+    pos=0
+    for i,((_,group),weight) in enumerate(zip(groups,weights)):
+        end=len(text) if i==len(groups)-1 else pos+round(len(text)*weight/total)
+        chunk=text[pos:end] if i==len(groups)-1 else text[pos:end]
+        pos=end
+        group[0].text=chunk
+        for extra in group[1:]:
+            extra.text=""
+    # If replacement is empty, retain the paragraph but clear its visible runs.
+    if not text:
+        for run in runs: run.text=""
+
 def _ppt_set_shape_text(shape,text):
+    """Set newline-separated content without flattening the template's formatting."""
     tf=shape.text_frame
-    if not tf.paragraphs:
-        tf.text=str(text); return
-    first=True
-    for para in tf.paragraphs:
-        for run in para.runs:
-            if first:
-                run.text=str(text); first=False
-            else:
-                run.text=""
-    if first:
-        tf.paragraphs[0].text=str(text)
+    lines=str(text).split("\\n")
+    paragraphs=list(tf.paragraphs)
+    if not paragraphs:
+        tf.text=str(text)
+        return
+    for i,para in enumerate(paragraphs):
+        _ppt_set_paragraph_text(para, lines[i] if i<len(lines) else "")
+    # If the replacement needs more lines than the template, clone the last
+    # paragraph's formatting before adding the additional content.
+    for line in lines[len(paragraphs):]:
+        para=tf.add_paragraph()
+        if paragraphs:
+            source=paragraphs[-1]
+            para.level=source.level
+            para.alignment=source.alignment
+            if source.runs:
+                para.add_run()._r.get_or_add_rPr()
+                if source.runs[0]._r.rPr is not None:
+                    para.runs[0]._r.rPr=deepcopy(source.runs[0]._r.rPr)
+        _ppt_set_paragraph_text(para,line)
+
+def _ppt_set_cell_text(cell,text):
+    """Update a table cell while keeping its original paragraph/run styles."""
+    _ppt_set_shape_text(cell,text)
 
 def _ppt_replace_picture(slide,shape,image_bytes):
     image_part,rid=slide.part.get_or_add_image_part(io.BytesIO(image_bytes))
@@ -537,7 +585,7 @@ async def create_presentation_report(pid:str,request:Request):
                     label=(row.cells[0].text or "").strip().lower()
                     for key,value in mapping.items():
                         if key in label and value:
-                            row.cells[1].text=value; break
+                            _ppt_set_cell_text(row.cells[1],value); break
         # Slide 5: sizing, tariff and usage
         text_shape(prs.slides[4],7,f"Đơn giá điện trung bình :\n{fmt(price,0)} VNĐ/kWh\n(bao gồm VAT)")
         text_shape(prs.slides[4],9,"Thói quen dùng điện: "+val("usagePattern","Theo phụ tải thực tế"))
@@ -557,7 +605,7 @@ async def create_presentation_report(pid:str,request:Request):
                 if len(t.rows)>1:
                     values=[project,f"{fmt(pv)} kWp",f"{fmt(battery)} kWh",val("phase"),f"{fmt(self_use,1)}%",f"{fmt(total,0)} đ","Xem báo cáo PTTC","—","—","—"]
                     for j,value in enumerate(values[:len(t.rows[1].cells)]):
-                        t.rows[1].cells[j].text=value
+                        _ppt_set_cell_text(t.rows[1].cells[j],value)
         # Replace the actual-roof and PV-layout photos in slides 4 and 10; keep all original geometry/cropping.
         uploads=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"id,name,path","order":"name.asc"}).json()
         def image_group(prefix):
