@@ -479,7 +479,9 @@ async def create_presentation_report(pid:str,request:Request):
     try:
         original=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(PRESENTATION_TEMPLATE_PATH,safe="/")).content
     except HTTPException as exc:
-        if exc.status_code==404: raise HTTPException(409,"Chưa tải form PowerPoint mẫu lên hệ thống. Hãy tải file .pptx 14 trang một lần.")
+        detail=str(exc.detail or "").lower()
+        if exc.status_code in (400,404) or "object not found" in detail or "not found" in detail:
+            raise HTTPException(409,"Chưa tìm thấy form PowerPoint mẫu trên máy chủ. Hãy chọn file .pptx 14 trang, nhấn 'Tải form PowerPoint mẫu', đợi thông báo tải thành công rồi mới nhấn 'Xuất báo giá PowerPoint'.")
         raise
     try:
         from pptx import Presentation
@@ -561,7 +563,10 @@ async def create_presentation_report(pid:str,request:Request):
             selected=[u for u in uploads if str(u.get("name","")).startswith(prefix+"__")][:4]
             raw=[]
             for item in selected:
-                obj=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(item["path"],safe="/"))
+                try:
+                    obj=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(item["path"],safe="/"))
+                except HTTPException as exc:
+                    raise HTTPException(409,f"Không tìm thấy file ảnh '{item.get('name','')}' trong kho lưu trữ. Hãy tải lại ảnh ở đúng nhóm rồi thử xuất lại.")
                 raw.append(obj.content)
             return raw
         real=image_group("roof-real"); layout=image_group("roof-pv")
