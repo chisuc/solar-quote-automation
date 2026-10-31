@@ -214,12 +214,48 @@ async def capture_global_solar_atlas(pid:str,request:Request):
               const maps=[...document.querySelectorAll('.leaflet-container')].filter(visible);
               if(maps[0])mark(maps[0],'satellite');
               if(maps.length>1)mark(maps[maps.length-1],'pvout');
-              // 3) Sunpath chart: tìm tiêu đề Solar azimuth rồi lấy vùng biểu đồ SVG/Highcharts bao quanh.
-              const chartTexts=[...document.querySelectorAll('svg text,svg tspan,div,span')].filter(e=>/Solar azimuth/i.test(e.textContent||''));
+              // 3) Sunpath: hỗ trợ cả SVG, Canvas và tiêu đề được render thành text/path.
+              const visibleCharts=[...document.querySelectorAll('svg,canvas')].filter(visible);
               let chart=null;
-              for(const t of chartTexts){let p=t.closest('svg');if(p&&visible(p)){chart=p.parentElement||p;break}let q=t;for(let n=0;n<6&&q;n++,q=q.parentElement){if(visible(q)&&(/Solar azimuth/i.test(q.innerText||'')||q.querySelector('svg,canvas'))){chart=q;break}}if(chart)break}
-              if(chart){let p=chart;for(let n=0;n<3&&p.parentElement&&p.parentElement.getBoundingClientRect().width<innerWidth*.85;n++)p=p.parentElement;chart=p;mark(chart,'sunpath')}
-              return {metrics:!!table,maps:maps.length,sunpath:!!chart};
+              const titleNodes=[...document.querySelectorAll('body *')].filter(e=>{
+                if(!visible(e))return false;
+                const tx=(e.innerText||e.textContent||'')+' '+(e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'');
+                return /solar azimuth|solar elevation/i.test(tx);
+              }).sort((a,b)=>{
+                const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();
+                return (ar.width*ar.height)-(br.width*br.height);
+              });
+              for(const t of titleNodes){
+                let q=t;
+                for(let n=0;n<9&&q;n++,q=q.parentElement){
+                  if(!visible(q))continue;
+                  const r=q.getBoundingClientRect();
+                  if(r.width>300&&r.height>170&&r.width<innerWidth*.98&&r.height<innerHeight*1.8&&(q.querySelector('svg,canvas')||/north/i.test(q.innerText||''))){
+                    chart=q;break;
+                  }
+                }
+                if(chart)break;
+              }
+              // Fallback: nhận diện biểu đồ qua các nhãn phương hướng và giờ mặt trời.
+              if(!chart){
+                const ranked=visibleCharts.map(e=>{
+                  const r=e.getBoundingClientRect(), html=(e.outerHTML||'').toLowerCase();
+                  const parent=e.parentElement, txt=((parent&&parent.innerText)||'').toLowerCase();
+                  const score=(/north/.test(html+txt)?3:0)+(/east/.test(html+txt)?3:0)+(/south/.test(html+txt)?3:0)+(/west/.test(html+txt)?3:0)+(/6h|7h|8h|17h|18h/.test(html+txt)?3:0)+(/solar/.test(html+txt)?4:0);
+                  return {e,score,area:r.width*r.height};
+                }).filter(x=>x.score>=6&&x.area>50000).sort((a,b)=>b.score-a.score||b.area-a.area);
+                if(ranked.length)chart=ranked[0].e.parentElement||ranked[0].e;
+              }
+              if(chart){
+                let p=chart;
+                for(let n=0;n<4&&p.parentElement;n++){
+                  const r=p.getBoundingClientRect(),pr=p.parentElement.getBoundingClientRect();
+                  if(pr.width>innerWidth*.98||pr.height>innerHeight*1.8||pr.width*pr.height>r.width*r.height*2.8)break;
+                  p=p.parentElement;
+                }
+                mark(p,'sunpath');chart=p;
+              }
+              return {metrics:!!table,maps:maps.length,sunpath:!!chart,sunpathCandidates:visibleCharts.length,titleMatches:titleNodes.length};
             }""")
             await page.wait_for_timeout(1500)
             required=["metrics","satellite","sunpath","pvout"]
