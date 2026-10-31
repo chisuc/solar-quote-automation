@@ -214,48 +214,51 @@ async def capture_global_solar_atlas(pid:str,request:Request):
               const maps=[...document.querySelectorAll('.leaflet-container')].filter(visible);
               if(maps[0])mark(maps[0],'satellite');
               if(maps.length>1)mark(maps[maps.length-1],'pvout');
-              // 3) Sunpath: hỗ trợ cả SVG, Canvas và tiêu đề được render thành text/path.
-              const visibleCharts=[...document.querySelectorAll('svg,canvas')].filter(visible);
-              let chart=null;
-              const titleNodes=[...document.querySelectorAll('body *')].filter(e=>{
-                if(!visible(e))return false;
-                const tx=(e.innerText||e.textContent||'')+' '+(e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'');
-                return /solar azimuth|solar elevation/i.test(tx);
+              // 3) Sunpath: tìm text tiêu đề trước (không áp điều kiện kích thước lên chính dòng tiêu đề),
+              // sau đó đi lên ancestor chứa chart SVG/Canvas.
+              const allEls=[...document.querySelectorAll('body *')];
+              const titleNodes=allEls.filter(e=>{
+                const tx=((e.innerText||'')+' '+(e.textContent||'')+' '+(e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')).trim();
+                return tx.length>0&&tx.length<180&&/solar azimuth|solar elevation|horizon|sunpath|sun path/i.test(tx);
               }).sort((a,b)=>{
-                const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();
-                return (ar.width*ar.height)-(br.width*br.height);
+                const at=((a.innerText||'')+' '+(a.textContent||'')).length;
+                const bt=((b.innerText||'')+' '+(b.textContent||'')).length;
+                return at-bt;
               });
+              let chart=null;
               for(const t of titleNodes){
                 let q=t;
-                for(let n=0;n<9&&q;n++,q=q.parentElement){
+                for(let n=0;n<12&&q;n++,q=q.parentElement){
                   if(!visible(q))continue;
-                  const r=q.getBoundingClientRect();
-                  if(r.width>300&&r.height>170&&r.width<innerWidth*.98&&r.height<innerHeight*1.8&&(q.querySelector('svg,canvas')||/north/i.test(q.innerText||''))){
+                  const r=q.getBoundingClientRect(),txt=(q.innerText||'').toLowerCase();
+                  const hasPlot=!!q.querySelector('svg,canvas');
+                  const compassWords=['north','east','south','west'].filter(w=>txt.includes(w)).length;
+                  if(r.width>300&&r.height>160&&r.width<innerWidth*.98&&r.height<innerHeight*1.8&&(hasPlot||compassWords>=2)){
                     chart=q;break;
                   }
                 }
                 if(chart)break;
               }
-              // Fallback: nhận diện biểu đồ qua các nhãn phương hướng và giờ mặt trời.
+              // Fallback: chart libraries can render title as SVG paths or canvas, so score nearby
+              // containers using text in all ancestors, not only the immediate parent.
               if(!chart){
-                const ranked=visibleCharts.map(e=>{
-                  const r=e.getBoundingClientRect(), html=(e.outerHTML||'').toLowerCase();
-                  const parent=e.parentElement, txt=((parent&&parent.innerText)||'').toLowerCase();
-                  const score=(/north/.test(html+txt)?3:0)+(/east/.test(html+txt)?3:0)+(/south/.test(html+txt)?3:0)+(/west/.test(html+txt)?3:0)+(/6h|7h|8h|17h|18h/.test(html+txt)?3:0)+(/solar/.test(html+txt)?4:0);
-                  return {e,score,area:r.width*r.height};
-                }).filter(x=>x.score>=6&&x.area>50000).sort((a,b)=>b.score-a.score||b.area-a.area);
-                if(ranked.length)chart=ranked[0].e.parentElement||ranked[0].e;
+                const plotEls=[...document.querySelectorAll('svg,canvas')].filter(visible);
+                const ranked=plotEls.map(e=>{
+                  let q=e, best=null;
+                  for(let n=0;n<8&&q;n++,q=q.parentElement){
+                    const r=q.getBoundingClientRect(),txt=(q.innerText||'').toLowerCase();
+                    if(r.width<300||r.height<160||r.width>innerWidth*.98||r.height>innerHeight*1.8)continue;
+                    const words=['north','east','south','west'].filter(w=>txt.includes(w)).length;
+                    const hours=(txt.match(/\\b(?:[6-9]|1[0-8])h\\b/g)||[]).length;
+                    const score=words*4+hours*2+(/solar azimuth|solar elevation|horizon|sunpath/.test(txt)?12:0);
+                    if(!best||score>best.score)best={e:q,score,area:r.width*r.height};
+                  }
+                  return best;
+                }).filter(x=>x&&x.score>=4).sort((a,b)=>b.score-a.score||a.area-b.area);
+                if(ranked.length)chart=ranked[0].e;
               }
-              if(chart){
-                let p=chart;
-                for(let n=0;n<4&&p.parentElement;n++){
-                  const r=p.getBoundingClientRect(),pr=p.parentElement.getBoundingClientRect();
-                  if(pr.width>innerWidth*.98||pr.height>innerHeight*1.8||pr.width*pr.height>r.width*r.height*2.8)break;
-                  p=p.parentElement;
-                }
-                mark(p,'sunpath');chart=p;
-              }
-              return {metrics:!!table,maps:maps.length,sunpath:!!chart,sunpathCandidates:visibleCharts.length,titleMatches:titleNodes.length};
+              if(chart)mark(chart,'sunpath');
+              return {metrics:!!table,maps:maps.length,sunpath:!!chart,titleMatches:titleNodes.length,plotElements:document.querySelectorAll('svg,canvas').length};
             }""")
             await page.wait_for_timeout(1500)
             required=["metrics","satellite","sunpath","pvout"]
