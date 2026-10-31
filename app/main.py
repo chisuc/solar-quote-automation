@@ -275,11 +275,11 @@ def restore_excel_connections(original_bytes, generated_bytes):
             ("http://schemas.openxmlformats.org/officeDocument/2006/relationships/connections","connections.xml"),
             ("http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml","../customXml/item1.xml")
         ]
-        for typ,target in relations:
-            if target in existing_targets: continue
-            part=("xl/"+target).replace("xl/../","")
+        for typ,relation_target in relations:
+            if relation_target in existing_targets: continue
+            part=("xl/"+relation_target).replace("xl/../","")
             if part not in source.namelist(): continue
-            ET.SubElement(rel_root,"{"+rel_ns+"}Relationship",{"Id":new_id(),"Type":typ,"Target":target})
+            ET.SubElement(rel_root,"{"+rel_ns+"}Relationship",{"Id":new_id(),"Type":typ,"Target":relation_target})
         target.writestr(rel_name,ET.tostring(rel_root,encoding="utf-8",xml_declaration=True))
         ct_name="[Content_Types].xml"
         ct_root=ET.fromstring(generated.read(ct_name))
