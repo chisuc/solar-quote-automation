@@ -9,6 +9,10 @@ WORKDIR /app
 # LibreOffice must exist in the final runtime image, not only in a temporary build environment.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-calc \
+    tesseract-ocr \
+    tesseract-ocr-vie \
+    tesseract-ocr-eng \
+    poppler-utils \
     fonts-liberation \
     fonts-dejavu-core \
     ca-certificates \
