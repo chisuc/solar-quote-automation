@@ -188,11 +188,11 @@ async def capture_global_solar_atlas(pid:str,request:Request):
         raise HTTPException(400,"Vui lòng nhập tọa độ hợp lệ.")
     check=sb_request("GET",db("projects"),params={"id":f"eq.{pid}","select":"id"}).json()
     if not check: raise HTTPException(404,"Hãy lưu dự án trước khi chụp ảnh.")
-    url=f"https://globalsolaratlas.info/map?c={lat},{lon},10"
+    url=f"https://globalsolaratlas.info/detail?c={lat},{lon},10&m=site&s={lat},{lon}"
     labels=["Thông số bức xạ & PV","Bản đồ vị trí công trình","Horizon & Sunpath","Bản đồ tiềm năng PVOUT"]
     try:
         with sync_playwright() as playwright:
-            browser=playwright.chromium.launch(headless=True,args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu"])
+            browser=playwright.chromium.launch(headless=True,args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-extensions","--single-process","--no-zygote"])
             page=browser.new_page(viewport={"width":1600,"height":1100},device_scale_factor=1)
             page.goto(url,wait_until="domcontentloaded",timeout=90000)
             try: page.wait_for_load_state("networkidle",timeout=25000)
@@ -238,7 +238,10 @@ async def capture_global_solar_atlas(pid:str,request:Request):
                 x=max(0,int(c["x"])); y=max(0,int(c["y"])); w=min(int(c["w"]),1600); h=min(int(c["h"]),1100)
                 page.evaluate("(y)=>window.scrollTo(0,y)",y)
                 page.wait_for_timeout(700)
-                data=page.screenshot(type="png",clip={"x":x,"y":max(0,int(c["y"]-y)),"width":max(1,w),"height":max(1,h)})
+                box=page.evaluate("(idx)=>{const a=[...document.querySelectorAll('section,article,main,canvas,svg,img,[class*=panel],[class*=card],[class*=widget],[class*=map]')];const e=a[idx];if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}}",c["i"])
+                if not box or box["width"]<1 or box["height"]<1:
+                    continue
+                data=page.screenshot(type="png",clip={"x":max(0,int(box["x"])),"y":max(0,int(box["y"])),"width":max(1,min(int(box["width"]),1600)),"height":max(1,min(int(box["height"]),1100))})
                 images.append(data)
             browser.close()
         saved=[]
