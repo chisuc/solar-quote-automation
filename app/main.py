@@ -98,11 +98,11 @@ async function api(u,opt={}){let r=await fetch(u,opt);if(r.status===401){locatio
 async function save(){try{let p=payload(),r=pid?await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}):await api('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});pid=r.id;$('status').textContent='Đã lưu lên máy chủ.';list()}catch(e){$('status').textContent=e.message}}
 async function list(){let a=await api('/api/projects');$('projects').innerHTML=a.map(x=>`<div class='project'><span><b>${esc(x.name)}</b><br><small>${esc(x.customer||'')}</small></span><span><button class='btn alt' onclick=\"openP('${x.id}')\">Mở</button> <button class='btn alt' onclick=\"delP('${x.id}')\">Xóa</button></span></div>`).join('')||'Chưa có dự án'}
 function esc(s){return String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
-async function openP(id){let x=await api('/api/projects/'+id);pid=id;fill(x.payload);listFiles()}
+async function openP(id){let x=await api('/api/projects/'+id);pid=id;fill(x.payload);let files=await listFiles();gsaImages=files.filter(v=>String(v.name||'').startsWith('global-solar-atlas-')).sort((a,b)=>a.name.localeCompare(b.name)).map(v=>({id:v.id,name:v.name}));renderGSAImages()}
 async function delP(id){if(confirm('Xóa dự án?')){await api('/api/projects/'+id,{method:'DELETE'});if(pid===id)fresh();list()}}
 function fresh(){pid=null;ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;calc()}
 async function upload(){if(!pid){alert('Hãy lưu dự án trước');return}let fd=new FormData();for(let f of $('files').files)fd.append('files',f);let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});if(!r.ok){alert('Tải file lỗi');return}$('files').value='';listFiles()}
-async function listFiles(){if(!pid)return;let a=await api('/api/projects/'+pid+'/files');$('fileList').innerHTML=a.map(x=>`<div><a href='/api/files/${x.id}'>${esc(x.name)}</a></div>`).join('')||'Chưa có file'}
+async function listFiles(){if(!pid)return;let a=await api('/api/projects/'+pid+'/files');$('fileList').innerHTML=a.map(x=>`<div><a href='/api/files/${x.id}'>${esc(x.name)}</a></div>`).join('')||'Chưa có file';return a}
 function exportJson(){let b=new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='du-an.json';a.click()}
 async function logout(){await fetch('/logout',{method:'POST'});location='/login-page'}
 $('date').value=new Date().toISOString().slice(0,10);calc();list().catch(e=>$('status').textContent=e.message);
