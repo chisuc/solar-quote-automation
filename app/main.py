@@ -520,7 +520,8 @@ def _ppt_monthly_production_chart(workbook_bytes):
         vals=[float(ws[f"G{i}"].value or 0) for i in range(53,65)]
     finally:
         wb.close()
-    W,H=1500,900
+    import math
+    W,H=1300,1000
     im=Image.new("RGB",(W,H),"white")
     d=ImageDraw.Draw(im)
     try:
@@ -530,10 +531,10 @@ def _ppt_monthly_production_chart(workbook_bytes):
     except Exception:
         font=small=bold=ImageFont.load_default()
     left,right,top,bottom=115,45,55,100
-    ymax=max(vals)*1.15 if vals else 1
-    for k in range(5):
-        v=ymax*k/4
-        y=H-bottom-int((H-top-bottom)*k/4)
+    ymax=max(500,math.ceil(max(vals)/500)*500) if vals else 3000
+    for k in range(7):
+        v=ymax*k/6
+        y=H-bottom-int((H-top-bottom)*k/6)
         d.line((left,y,W-right,y),fill=(218,218,218),width=2)
         d.text((left-15,y-13),f"{v:,.0f}",font=small,fill=(40,40,40),anchor="ra")
     step=(W-left-right)/12
@@ -543,7 +544,7 @@ def _ppt_monthly_production_chart(workbook_bytes):
         bh=(H-top-bottom)*v/ymax
         y=H-bottom-bh
         d.rectangle((x,y,x+bw,H-bottom),fill=(247,151,68))
-        d.text((x+bw/2,y-30),f"{v:.0f}",font=small,fill=(35,35,35),anchor="mm")
+        d.text((x+bw/2,y-30),f"{v:.2f}",font=small,fill=(35,35,35),anchor="mm")
         d.text((x+bw/2,H-bottom+28),str(i+1),font=small,fill=(35,35,35),anchor="mm")
     d.text((left,H-42),"Tháng",font=font,fill=(20,20,20))
     d.text((22,top),"kWh",font=bold,fill=(20,20,20))
