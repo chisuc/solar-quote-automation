@@ -567,11 +567,24 @@ async def create_presentation_report(pid:str,request:Request):
         # Slide 1: cover information
         text_shape(prs.slides[0],7,f"TÓM TẮT DỰ ÁN\nĐIỆN MẶT TRỜI MÁI NHÀ\n\nChủ đầu tư:\n{customer}\nTổng thầu:\nCÔNG TY CỔ PHẦN CẢNH NGHI R.E")
         text_shape(prs.slides[0],8,f"TP.HCM ngày {date}")
-        # Slide 3: generic project introduction, no hard-coded household/factory savings claims
-        text_shape(prs.slides[2],4,"ĐIỆN MẶT TRỜI KẾT HỢP PIN LƯU TRỮ\nGIẢM CHI PHÍ ĐIỆN – CHỦ ĐỘNG NGUỒN ĐIỆN\nGiải pháp năng lượng theo nhu cầu công trình")
-        text_shape(prs.slides[2],5,"GIẢI PHÁP ĐIỆN MẶT TRỜI CHO CÔNG TRÌNH")
-        text_shape(prs.slides[2],7,f"QUY MÔ HỆ THỐNG\nCông suất điện mặt trời: {fmt(pv)} kWp\nDung lượng lưu trữ: {fmt(battery)} kWh\nĐiện năng tiêu thụ: {fmt(monthly_load,0)} kWh/tháng\nSản lượng dự kiến: {fmt(annual,0)} kWh/năm")
-        text_shape(prs.slides[2],8,f"PHƯƠNG ÁN ĐỀ XUẤT\nTỷ lệ tự tiêu thụ dự kiến: {fmt(self_use,1)}%")
+        # Slide 3: only update the self-consumption percentage and 30-year accumulated savings.
+        # Keep every other original text box, paragraph, image, shape, and layout untouched.
+        slide3=prs.slides[2]
+        if len(slide3.shapes)>7 and slide3.shapes[7].has_text_frame:
+            paragraphs=slide3.shapes[7].text_frame.paragraphs
+            if len(paragraphs)>2:
+                percent=fmt(self_use,1).rstrip("0").rstrip(",")+"%"
+                runs=paragraphs[2].runs
+                numeric=[r for r in runs if re.search(r"\d",r.text)]
+                if numeric:
+                    numeric[0].text=percent
+                    for run in numeric[1:]: run.text=""
+        if len(slide3.shapes)>8 and slide3.shapes[8].has_text_frame:
+            paragraphs=slide3.shapes[8].text_frame.paragraphs
+            if len(paragraphs)>1 and paragraphs[1].runs:
+                savings=str(p.get("savings30Years") or p.get("accumulatedSavings30Years") or "").strip()
+                if savings:
+                    paragraphs[1].runs[0].text="LÊN ĐẾN "+savings
         # Slide 4: project data table
         s4=prs.slides[3]
         for sh in s4.shapes:
