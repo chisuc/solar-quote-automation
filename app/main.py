@@ -565,6 +565,8 @@ async def create_presentation_report(pid:str,request:Request):
                 raw.append(obj.content)
             return raw
         real=image_group("roof-real"); layout=image_group("roof-pv")
+        if not real or not layout:
+            raise HTTPException(409,"Vui lòng tải ít nhất 1 ảnh mái thực tế và 1 ảnh mái bố trí PV trước khi xuất PowerPoint.")
         def replace_at(slide_index,shape_index,images):
             if not images:return
             slide=prs.slides[slide_index]
@@ -807,9 +809,13 @@ async def upload(pid:str,request:Request,files:list[UploadFile]=File(...),catego
     auth(request)
     check=sb_request("GET",db("projects"),params={"id":f"eq.{pid}","select":"id"}).json()
     if not check: raise HTTPException(404,"Không tìm thấy dự án")
-    out=[]; allowed={".pdf",".xlsx",".xls",".csv",".jpg",".jpeg",".png",".doc",".docx"}
+    out=[]; allowed={".pdf",".xlsx",".xls",".csv",".jpg",".jpeg",".png",".webp",".doc",".docx"}
+    if category and category not in ("roof-real","roof-pv"): raise HTTPException(400,"Nhóm ảnh không hợp lệ.")
     for f in files:
         name=Path(f.filename or "file").name; ext=Path(name).suffix.lower()
+        if category:
+            if ext not in (".jpg",".jpeg",".png",".webp"): raise HTTPException(400,"Ảnh mái chỉ hỗ trợ JPG, PNG hoặc WEBP.")
+            name=category+"__"+name
         if ext not in allowed: raise HTTPException(400,"Định dạng file chưa hỗ trợ")
         data=await f.read()
         if len(data)>20*1024*1024: raise HTTPException(413,"Mỗi file tối đa 20 MB")
