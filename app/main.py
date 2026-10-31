@@ -112,7 +112,7 @@ function toggleFinancialAdvanced(){let el=$('financialAdvanced'),open=el.style.d
 async function applyFinancialOverrides(){try{financialOverrides=readFinancialOverrides();$('financialStatus').textContent='Đã áp dụng '+Object.keys(financialOverrides).length+' thông số điều chỉnh. Đang lưu theo dự án...';if(pid){let p=payload();p.financialOverrides=financialOverrides;await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});$('financialStatus').textContent='Đã lưu thông số PTTC. Đang tạo báo cáo theo các thay đổi...';await generateFinancialReport()}else{$('financialStatus').textContent='Hãy lưu dự án trước khi áp dụng điều chỉnh và tạo báo cáo PTTC.'}}catch(e){$('financialStatus').textContent=e.message}}
 function resetFinancialOverrides(){financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='Đã xóa các điều chỉnh; sẽ sử dụng thông số mặc định của mẫu PTTC.'}
 async function uploadFinancialTemplate(){let f=$('financialTemplateFile').files[0];if(!f){$('financialReportStatus').textContent='Chọn file Excel mẫu trước.';return}let fd=new FormData();fd.append('file',f);try{$('financialReportStatus').textContent='Đang tải mẫu PTTC...';let r=await fetch('/api/financial-template',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không tải được mẫu PTTC');$('financialReportStatus').textContent='Đã lưu mẫu PTTC trên hệ thống.';$('financialTemplateFile').value=''}catch(e){$('financialReportStatus').textContent=e.message}}
-async function generateFinancialReport(){if(!pid){$('financialReportStatus').textContent='Hãy lưu dự án trước khi tạo báo cáo PTTC.';return}try{$('financialReportStatus').textContent='Đang tạo file Excel PTTC...';let p=payload();let r=await api('/api/projects/'+pid+'/financial-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:p})});$('financialReportStatus').innerHTML='Đã tạo báo cáo: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('financialReportStatus').textContent='Không tạo được báo cáo: '+e.message}}
+async function generateFinancialReport(){if(!pid){$('financialReportStatus').textContent='Hãy lưu dự án trước khi tạo báo cáo PTTC.';return}try{$('financialReportStatus').textContent='Đang tạo file Excel PTTC...';let p=payload();let r=await api('/api/projects/'+pid+'/financial-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:p})});financialReportId=r.id;let savedPayload=payload();savedPayload.financialReportId=r.id;await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(savedPayload)});$('financialReportStatus').innerHTML='Đã tạo báo cáo: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('financialReportStatus').textContent='Không tạo được báo cáo: '+e.message}}
 async function uploadPresentationTemplate(){let f=$('presentationTemplateFile').files[0];if(!f){$('presentationStatus').textContent='Chọn file PowerPoint mẫu trước.';return}let fd=new FormData();fd.append('file',f);try{$('presentationStatus').textContent='Đang lưu form PowerPoint mẫu...';let r=await fetch('/api/presentation-template',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không tải được form PowerPoint');$('presentationStatus').textContent='Đã lưu form PowerPoint mẫu trên hệ thống.';$('presentationTemplateFile').value=''}catch(e){$('presentationStatus').textContent=e.message}}
 async function generatePresentationReport(){if(!pid){$('presentationStatus').textContent='Hãy lưu dự án trước khi xuất PowerPoint.';return}try{$('presentationStatus').textContent='Đang tạo PowerPoint theo form gốc...';let r=await api('/api/projects/'+pid+'/presentation-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:payload()})});$('presentationStatus').innerHTML='Đã xuất báo giá: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('presentationStatus').textContent='Không xuất được PowerPoint: '+e.message}}
 
@@ -583,11 +583,28 @@ async def create_presentation_report(pid:str,request:Request):
             if index<len(slide.shapes):
                 sh=slide.shapes[index]
                 if sh.has_text_frame: _ppt_set_shape_text(sh,text)
-        # Slide 1: cover information
-        text_shape(prs.slides[0],7,f"TÓM TẮT DỰ ÁN\nĐIỆN MẶT TRỜI MÁI NHÀ\n\nChủ đầu tư:\n{customer}\nTổng thầu:\nCÔNG TY CỔ PHẦN CẢNH NGHI R.E")
-        text_shape(prs.slides[0],8,f"TP.HCM ngày {date}")
-        # Slide 3: update only the percentage and 30-year savings from PTTC present!R113.
-        # Preserve every other original paragraph, shape, image, and layout.
+        # Slide 1: replace investor name and quote dates only.
+        cover=prs.slides[0]
+        if len(cover.shapes)>7 and cover.shapes[7].has_text_frame:
+            paras=cover.shapes[7].text_frame.paragraphs
+            if len(paras)>4 and paras[4].runs:
+                paras[4].runs[0].text=customer
+                for run in paras[4].runs[1:]: run.text=""
+        quote_date=date or datetime.now().astimezone().strftime("%Y-%m-%d")
+        try:
+            d0=datetime.strptime(quote_date,"%Y-%m-%d")
+            quote_date_display=d0.strftime("%d/%m/%Y")
+            valid_raw=val("quoteValidUntil").strip()
+            valid_date=datetime.strptime(valid_raw,"%Y-%m-%d") if valid_raw else d0+__import__("datetime").timedelta(days=7)
+            valid_date_display=valid_date.strftime("%d/%m/%Y")
+        except ValueError:
+            raise HTTPException(400,"Ngày báo giá hoặc ngày hiệu lực không hợp lệ.")
+        if len(cover.shapes)>8 and cover.shapes[8].has_text_frame:
+            para=cover.shapes[8].text_frame.paragraphs[0]
+            if para.runs:
+                para.runs[0].text=f"TP.HCM ngày {quote_date_display}, hiệu lực đến ngày {valid_date_display}"
+                for run in para.runs[1:]: run.text=""
+        # Slide 3: update only self-consumption and 30-year savings from PTTC present!R113.
         slide3=prs.slides[2]
         percent_text=fmt(self_use,1).rstrip("0").rstrip(",")+"%"
         if len(slide3.shapes)>7 and slide3.shapes[7].has_text_frame:
@@ -595,24 +612,24 @@ async def create_presentation_report(pid:str,request:Request):
                 if "75-100%" in run.text:
                     run.text=run.text.replace("75-100%",percent_text)
                     break
-        pttc_files=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"name,path","order":"name.asc"}).json()
-        pttc_candidates=[x for x in pttc_files if str(x.get("name","")).startswith("PTTC_") and str(x.get("name","")).lower().endswith(".xlsx")]
-        if not pttc_candidates:
-            raise HTTPException(409,"Chưa có file PTTC của dự án. Hãy xuất báo cáo PTTC trước khi xuất PowerPoint.")
-        pttc_item=pttc_candidates[-1]
-        pttc_bytes=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(pttc_item["path"],safe="/")).content
+        report_id=str(p.get("financialReportId") or "").strip()
+        pttc_rows=sb_request("GET",db("uploads"),params={"id":f"eq.{report_id}","pid":f"eq.{pid}","select":"name,path"}).json() if report_id else []
+        if not pttc_rows:
+            raise HTTPException(409,"Chưa xác định được file PTTC của dự án. Hãy tạo báo cáo PTTC trước khi xuất PowerPoint.")
+        pttc_bytes=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(pttc_rows[0]["path"],safe="/")).content
         pttc_wb=load_workbook(io.BytesIO(pttc_bytes),data_only=True,read_only=True)
         try:
             accumulated=pttc_wb["present"]["R113"].value
         finally:
             pttc_wb.close()
         if accumulated is None:
-            raise HTTPException(409,"Ô present!R113 chưa có kết quả. Hãy xuất lại báo cáo PTTC sau khi hệ thống tính toán.")
+            raise HTTPException(409,"Ô present!R113 chưa có kết quả. Hãy tạo lại báo cáo PTTC rồi xuất PowerPoint.")
         savings_text=f"{float(accumulated):.1f}".replace(".",",")
         if len(slide3.shapes)>8 and slide3.shapes[8].has_text_frame:
-            paragraphs=slide3.shapes[8].text_frame.paragraphs
-            if len(paragraphs)>1 and paragraphs[1].runs:
-                paragraphs[1].runs[0].text="LÊN ĐẾN "+savings_text+" TỶ ĐỒNG"
+            paras=slide3.shapes[8].text_frame.paragraphs
+            if len(paras)>1 and paras[1].runs:
+                paras[1].runs[0].text="LÊN ĐẾN "+savings_text+" TỶ ĐỒNG"
+                for run in paras[1].runs[1:]: run.text=""
         # Slide 4: project data table
         s4=prs.slides[3]
         for sh in s4.shapes:
