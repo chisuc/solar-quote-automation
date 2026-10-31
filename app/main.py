@@ -636,12 +636,15 @@ async def create_presentation_report(pid:str,request:Request):
             if sh.has_table:
                 table=sh.table
                 mapping={
-                    "địa điểm":val("address"),"ngành nghề":val("industry","Công trình"),"quốc gia":"Việt Nam",
+                    "địa điểm":val("address"),"ngành nghề":val("industry"),"quốc gia":"Việt Nam",
                     "điện năng tiêu thụ":(fmt(monthly_load,0)+" kWh / tháng") if monthly_load else "",
+                    "sản lượng tiêu thụ ước tính":(fmt(monthly_load*12,0)+" kWh/ năm") if monthly_load else "",
                     "điện năng":(fmt(monthly_load*12,0)+" kWh / năm") if monthly_load else "",
+                    "giá điện trung bình":(fmt(price,0)+" VNĐ/kWh") if price else "",
                     "đơn giá điện":(fmt(price,0)+" VNĐ/kWh") if price else "",
                     "diện tích mái":(fmt(roof,0)+" m²") if roof else "",
-                    "kết cấu mái":val("roofType")
+                    "bức xạ":(fmt(num("solarRadiation"),1)+" kWh/m²/năm") if num("solarRadiation") else "",
+                    "kết cấu":val("roofType"),"điều kiện mái":val("roofCondition")
                 }
                 for row_index in range(1, len(table.rows)):
                     row=table.rows[row_index]
@@ -651,24 +654,12 @@ async def create_presentation_report(pid:str,request:Request):
                             _ppt_set_cell_text(row.cells[1],value); break
         # Slide 5: sizing, tariff and usage
         text_shape(prs.slides[4],7,f"Đơn giá điện trung bình :\n{fmt(price,0)} VNĐ/kWh\n(bao gồm VAT)")
-        text_shape(prs.slides[4],9,"Thói quen dùng điện: "+val("usagePattern","Theo phụ tải thực tế"))
+        text_shape(prs.slides[4],9,"Thói quen dùng điện: "+val("usagePattern","Chưa cập nhật"))
         text_shape(prs.slides[4],11,f"Hệ thống đề xuất:\nCông suất: {fmt(pv)} kWp\nDung lượng lưu trữ: {fmt(battery)} kWh\nTỉ lệ tiêu thụ điện ước tính: {fmt(self_use,1)}%")
         text_shape(prs.slides[4],14,f"Số điện:\n~{fmt(monthly_load,0)} kWh/tháng")
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của hệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual,0)} kWh")
-        # Slide 9: equipment descriptions
-        text_shape(prs.slides[8],8,f"Biến tần: {val('invModel')}\n- Công suất: {fmt(num('invKw'),2)} kW\n- Số pha: {val('phase')}\n- Theo dõi qua ứng dụng giám sát")
-        text_shape(prs.slides[8],9,f"Pin lưu trữ: {val('batModel')}\n- Dung lượng: {fmt(battery)} kWh\n- Số lượng bộ: {fmt(num('batQty'),0)}")
-        text_shape(prs.slides[8],6,f"Tủ Solar – Tủ phân phối\nThiết bị bảo vệ và đóng cắt theo thiết kế được phê duyệt.")
-        # Slide 10: summary table. Financial outputs are intentionally not copied from sample values.
-        s10=prs.slides[9]
-        for sh in s10.shapes:
-            if sh.has_table:
-                t=sh.table
-                if len(t.rows)>1:
-                    values=[project,f"{fmt(pv)} kWp",f"{fmt(battery)} kWh",val("phase"),f"{fmt(self_use,1)}%",f"{fmt(total,0)} đ","Xem báo cáo PTTC","—","—","—"]
-                    for j,value in enumerate(values[:len(t.rows[1].cells)]):
-                        _ppt_set_cell_text(t.rows[1].cells[j],value)
+        # Slides 7 onward are intentionally kept unchanged for this phase.
         # Replace the actual-roof and PV-layout photos in slides 4 and 10; keep all original geometry/cropping.
         uploads=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"id,name,path","order":"name.asc"}).json()
         def image_group(prefix):
@@ -694,7 +685,6 @@ async def create_presentation_report(pid:str,request:Request):
             collage=_ppt_photo_collage(images,ratio)
             if collage: _ppt_replace_picture(slide,shape,collage)
         replace_at(3,8,real); replace_at(3,9,layout)
-        replace_at(9,11,real); replace_at(9,12,layout)
         # Save the deck while preserving the original theme, master, layout, and all static slides.
         out=io.BytesIO(); prs.save(out); generated=out.getvalue()
     except HTTPException: raise
