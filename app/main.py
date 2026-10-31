@@ -733,11 +733,15 @@ async def create_presentation_report(pid:str,request:Request):
         if len(prs.slides[5].shapes)>10 and prs.slides[5].shapes[10].shape_type==MSO_SHAPE_TYPE.PICTURE:
             _ppt_replace_picture(prs.slides[5],prs.slides[5].shapes[10],_ppt_monthly_production_chart(pttc_bytes))
         # Four Global Solar Atlas captures occupy the four original picture frames on slide 6.
+        gsa_files=[]
         for image_no,shape_index in enumerate((11,12,13,14),start=1):
             found=[u for u in uploads if str(u.get("name",""))==f"global-solar-atlas-{image_no}.png"]
-            if found and shape_index<len(prs.slides[5].shapes):
+            if not found:
+                raise HTTPException(409,"Cần chụp đủ 4 ảnh Global Solar Atlas trước khi xuất PowerPoint trang 6.")
+            if shape_index<len(prs.slides[5].shapes):
                 obj=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(found[-1]["path"],safe="/"))
                 _ppt_replace_picture(prs.slides[5],prs.slides[5].shapes[shape_index],obj.content)
+                gsa_files.append(image_no)
         # Save the deck while preserving the original theme, master, layout, and all static slides.
         out=io.BytesIO(); prs.save(out); generated=out.getvalue()
     except HTTPException: raise
