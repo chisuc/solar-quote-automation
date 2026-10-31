@@ -81,6 +81,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='panel'><h3>Cấu hình hệ thống</h3><div class='grid'><div class='field'><label>Thương hiệu tấm pin</label><input id='panelBrand'></div><div class='field'><label>Công suất tấm pin (Wp)</label><input id='panelW' type='number' value='625'></div><div class='field'><label>Số lượng tấm</label><input id='panelQty' type='number' value='30'></div><div class='field'><label>Công suất PV (kWp)</label><input id='pv' readonly></div><div class='field'><label>Inverter / Model</label><input id='invModel'></div><div class='field'><label>Công suất inverter (kW)</label><input id='invKw' type='number'></div><div class='field'><label>Số pha</label><select id='phase'><option>1 pha</option><option>3 pha</option></select></div><div class='field'><label>Pin lưu trữ / Model</label><input id='batModel'></div><div class='field'><label>Dung lượng mỗi bộ (kWh)</label><input id='batKwh' type='number' step='.01'></div><div class='field'><label>Số lượng bộ pin</label><input id='batQty' type='number' value='0'></div><div class='field'><label>Tổng dung lượng pin (kWh)</label><input id='batTotal' readonly></div></div></div>
 <div class='panel'><h3>Điện năng & báo giá</h3><div class='grid'><div class='field'><label>Tiêu thụ tháng (kWh)</label><input id='load' type='number'></div><div class='field'><label>Sản lượng ĐMT năm (kWh)</label><input id='annual' type='number'></div><div class='field'><label>Tự tiêu thụ dự kiến (%)</label><input id='self' type='number' value='80'></div><div class='field'><label>Đơn giá điện (đ/kWh)</label><input id='price' type='number'></div><div class='field'><label>Tổng trước VAT (VNĐ)</label><input id='pre' type='number'></div><div class='field'><label>VAT (%)</label><input id='vat' type='number' value='8'></div><div class='field'><label>Tiền VAT</label><input id='vatMoney' readonly></div><div class='field'><label>Tổng sau VAT</label><input id='grand' readonly></div></div></div>
 <div class='panel' id='financialPanel'><div class='row' style='justify-content:space-between;align-items:center'><div><h3 style='margin:0'>Phân tích tài chính</h3><p class='muted'>Sử dụng mặc định theo file mẫu. Chỉ điều chỉnh khi cần thiết.</p></div><button class='btn alt' id='financialToggle' type='button' onclick='toggleFinancialAdvanced()'>⚙ Điều chỉnh chuyên sâu PTTC</button></div><div id='financialAdvanced' style='display:none;margin-top:16px'><p class='muted'>Ô để trống sẽ giữ nguyên thông số trong file Excel gốc. Chỉ các ô có nhập giá trị mới được thay đổi.</p><div class='grid'><div class='field'><label>Tỷ lệ lạm phát (%/năm)</label><input id='finInflation' type='number' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Mức tăng giá điện (%/năm)</label><input id='finElectricityEscalation' type='number' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Tỷ lệ tiêu thụ điện (%)</label><input id='finSelfConsumption' type='number' step='0.01' placeholder='Giữ nguyên theo thông số dự án'></div><div class='field'><label>Tỷ lệ vay vốn (%)</label><input id='finLoanRatio' type='number' min='0' max='100' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Thời hạn vay (năm)</label><input id='finLoanTerm' type='number' min='0' step='1' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Lãi suất vay (%/năm)</label><input id='finLoanRate' type='number' min='0' step='0.01' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Thời gian khấu hao (năm)</label><input id='finDepreciation' type='number' min='1' step='1' placeholder='Giữ nguyên mặc định'></div><div class='field'><label>Chi phí vận hành (triệu đồng/năm)</label><input id='finOperatingCost' type='number' min='0' step='0.01' placeholder='Giữ nguyên mặc định'></div></div><div class='row'><button class='btn' type='button' onclick='applyFinancialOverrides()'>Thay đổi & tạo báo cáo</button><button class='btn alt' type='button' onclick='resetFinancialOverrides()'>Xóa điều chỉnh</button></div><div id='financialStatus' class='muted' aria-live='polite'></div></div><div class='row' style='align-items:center'><input id='financialTemplateFile' type='file' accept='.xlsx' style='max-width:320px'><button class='btn alt' type='button' onclick='uploadFinancialTemplate()'>Tải mẫu Excel lên hệ thống</button><button class='btn' type='button' onclick='generateFinancialReport()'>Tạo báo cáo PTTC</button></div><div id='financialReportStatus' class='muted' aria-live='polite'></div></div>
+<div class='panel' id='presentationPanel'><h3>Xuất báo giá PowerPoint</h3><p class='muted'>Dùng đúng form PowerPoint 14 trang của công ty. Tải file mẫu một lần; các lần sau website sẽ tự dùng lại mẫu đã lưu.</p><div class='row' style='align-items:center'><input id='presentationTemplateFile' type='file' accept='.pptx' style='max-width:340px'><button class='btn alt' type='button' onclick='uploadPresentationTemplate()'>Tải form PowerPoint mẫu</button><button class='btn' type='button' onclick='generatePresentationReport()'>Xuất báo giá PowerPoint</button></div><div id='presentationStatus' class='muted' aria-live='polite'></div></div>
 <div class='panel'><h3>Mô phỏng sản lượng PVWatts V8</h3><p class='muted'>Nhập tọa độ và thông số mô phỏng, sau đó bấm lấy dữ liệu trực tiếp từ PVWatts.</p><div class='grid'>
 <div class='field' style='grid-column:1/-1'><label>Tọa độ công trình (dán Latitude, Longitude)</label><input id='coordPaste' type='text' placeholder='Ví dụ: 10.821006371676384, 106.68872440336703' autocomplete='off'><div id='coordStatus' class='muted'>Dán một dòng tọa độ Google Maps; website tự tách vĩ độ và kinh độ.</div><input id='lat' type='hidden'><input id='lon' type='hidden'></div>
 <div class='field'><label>DC System Size (kW)</label><input id='pvSystemSize' type='number' step='.01' placeholder='Tự lấy từ công suất PV nếu để trống'></div>
@@ -112,6 +113,9 @@ async function applyFinancialOverrides(){try{financialOverrides=readFinancialOve
 function resetFinancialOverrides(){financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='Đã xóa các điều chỉnh; sẽ sử dụng thông số mặc định của mẫu PTTC.'}
 async function uploadFinancialTemplate(){let f=$('financialTemplateFile').files[0];if(!f){$('financialReportStatus').textContent='Chọn file Excel mẫu trước.';return}let fd=new FormData();fd.append('file',f);try{$('financialReportStatus').textContent='Đang tải mẫu PTTC...';let r=await fetch('/api/financial-template',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không tải được mẫu PTTC');$('financialReportStatus').textContent='Đã lưu mẫu PTTC trên hệ thống.';$('financialTemplateFile').value=''}catch(e){$('financialReportStatus').textContent=e.message}}
 async function generateFinancialReport(){if(!pid){$('financialReportStatus').textContent='Hãy lưu dự án trước khi tạo báo cáo PTTC.';return}try{$('financialReportStatus').textContent='Đang tạo file Excel PTTC...';let p=payload();let r=await api('/api/projects/'+pid+'/financial-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:p})});$('financialReportStatus').innerHTML='Đã tạo báo cáo: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('financialReportStatus').textContent='Không tạo được báo cáo: '+e.message}}
+async function uploadPresentationTemplate(){let f=$('presentationTemplateFile').files[0];if(!f){$('presentationStatus').textContent='Chọn file PowerPoint mẫu trước.';return}let fd=new FormData();fd.append('file',f);try{$('presentationStatus').textContent='Đang lưu form PowerPoint mẫu...';let r=await fetch('/api/presentation-template',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không tải được form PowerPoint');$('presentationStatus').textContent='Đã lưu form PowerPoint mẫu trên hệ thống.';$('presentationTemplateFile').value=''}catch(e){$('presentationStatus').textContent=e.message}}
+async function generatePresentationReport(){if(!pid){$('presentationStatus').textContent='Hãy lưu dự án trước khi xuất PowerPoint.';return}try{$('presentationStatus').textContent='Đang tạo PowerPoint theo form gốc...';let r=await api('/api/projects/'+pid+'/presentation-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:payload()})});$('presentationStatus').innerHTML='Đã xuất báo giá: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('presentationStatus').textContent='Không xuất được PowerPoint: '+e.message}}
+
 
 function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.financialOverrides=financialOverrides;o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;o.gsaImages=gsaImages;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined)$(k).value=o[k]});financialOverrides=o.financialOverrides||{};showFinancialOverrides();pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;gsaImages=o.gsaImages||[];renderGSAImages();renderPV();calc()}
 $('albedoMode').addEventListener('change',()=>{$('albedoField').style.display=$('albedoMode').value==='manual'?'block':'none'});
@@ -397,6 +401,195 @@ async def create_financial_report(pid:str,request:Request):
         sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]})
         raise
     return {"id":fid,"name":filename,"recalculation":"Excel sẽ tính lại công thức khi mở file."}
+
+
+PRESENTATION_TEMPLATE_PATH="system/solar-quote-template.pptx"
+PRESENTATION_TEMPLATE_NAME="solar-quote-template.pptx"
+
+@app.post("/api/presentation-template")
+async def upload_presentation_template(request:Request,file:UploadFile=File(...)):
+    auth(request)
+    name=Path(file.filename or "").name
+    if Path(name).suffix.lower()!=".pptx":
+        raise HTTPException(400,"Form PowerPoint phải là file .pptx.")
+    data=await file.read()
+    if len(data)>30*1024*1024:
+        raise HTTPException(413,"File PowerPoint mẫu tối đa 30 MB.")
+    try:
+        from pptx import Presentation
+        check=Presentation(io.BytesIO(data))
+        if len(check.slides)<14:
+            raise ValueError("Form cần có ít nhất 14 slide theo mẫu đã thống nhất.")
+    except Exception as exc:
+        raise HTTPException(400,"File PowerPoint không hợp lệ hoặc không đủ 14 slide: "+str(exc)[:250])
+    sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(PRESENTATION_TEMPLATE_PATH,safe="/"),data=data,headers={"Content-Type":"application/vnd.openxmlformats-officedocument.presentationml.presentation","x-upsert":"true"})
+    return {"ok":True,"name":PRESENTATION_TEMPLATE_NAME,"slides":14}
+
+def _ppt_set_shape_text(shape,text):
+    tf=shape.text_frame
+    if not tf.paragraphs:
+        tf.text=str(text); return
+    first=True
+    for para in tf.paragraphs:
+        for run in para.runs:
+            if first:
+                run.text=str(text); first=False
+            else:
+                run.text=""
+    if first:
+        tf.paragraphs[0].text=str(text)
+
+def _ppt_replace_picture(slide,shape,image_bytes):
+    image_part,rid=slide.part.get_or_add_image_part(io.BytesIO(image_bytes))
+    blip=shape._element.blipFill.blip
+    from pptx.oxml.ns import qn
+    blip.set(qn("r:embed"),rid)
+
+def _ppt_photo_collage(items, target_ratio):
+    from PIL import Image, ImageOps, ImageDraw
+    thumbs=[]
+    for raw in items[:4]:
+        try:
+            im=Image.open(io.BytesIO(raw)).convert("RGB")
+            thumbs.append(im)
+        except Exception: pass
+    if not thumbs: return None
+    if len(thumbs)==1:
+        out=ImageOps.fit(thumbs[0],(1600,max(400,int(1600/max(target_ratio,.2)))),method=Image.Resampling.LANCZOS)
+    else:
+        cols=2; rows=(len(thumbs)+1)//2
+        W=1600; H=max(500,int(W/max(target_ratio,.2)))
+        gap=12; cw=(W-gap*(cols+1))//cols; ch=(H-gap*(rows+1))//rows
+        out=Image.new("RGB",(W,H),"white")
+        for i,im in enumerate(thumbs):
+            x=gap+(i%cols)*(cw+gap); y=gap+(i//cols)*(ch+gap)
+            tile=ImageOps.fit(im,(cw,ch),method=Image.Resampling.LANCZOS)
+            out.paste(tile,(x,y))
+    b=io.BytesIO(); out.save(b,format="JPEG",quality=92); return b.getvalue()
+
+@app.post("/api/projects/{pid}/presentation-report")
+async def create_presentation_report(pid:str,request:Request):
+    auth(request)
+    body=await request.json()
+    rows=sb_request("GET",db("projects"),params={"id":f"eq.{pid}","select":"id,payload"}).json()
+    if not rows or (rows[0].get("payload") or {}).get("_recordType")=="folder":
+        raise HTTPException(404,"Không tìm thấy dự án.")
+    saved=rows[0].get("payload") or {}
+    p=body.get("payload") or saved
+    try:
+        original=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(PRESENTATION_TEMPLATE_PATH,safe="/")).content
+    except HTTPException as exc:
+        if exc.status_code==404: raise HTTPException(409,"Chưa tải form PowerPoint mẫu lên hệ thống. Hãy tải file .pptx 14 trang một lần.")
+        raise
+    try:
+        from pptx import Presentation
+        from pptx.enum.shapes import MSO_SHAPE_TYPE
+        prs=Presentation(io.BytesIO(original))
+        if len(prs.slides)<14: raise ValueError("Form PowerPoint phải có ít nhất 14 slide.")
+        def val(k,default=""):
+            x=p.get(k)
+            return default if x is None else str(x)
+        def num(k,default=0):
+            try: return float(p.get(k) or default)
+            except (TypeError,ValueError): return float(default)
+        def fmt(x,d=2):
+            return f"{x:,.{d}f}".replace(",","X").replace(".",",").replace("X",".")
+        project=val("projectName",val("customer","DỰ ÁN ĐIỆN MẶT TRỜI"))
+        customer=val("customer",project)
+        pv=num("pv",num("panelW")*num("panelQty")/1000)
+        battery=num("batKwh")*num("batQty")
+        monthly_load=num("load")
+        annual=num("annual",(p.get("pvwattsResult") or {}).get("annual",0))
+        self_use=num("self")
+        price=num("price")
+        total=num("pre")*(1+num("vat",8)/100)
+        date=val("date",datetime.now().astimezone().strftime("%Y-%m-%d"))
+        roof=num("roof")
+        def text_shape(slide,index,text):
+            if index<len(slide.shapes):
+                sh=slide.shapes[index]
+                if sh.has_text_frame: _ppt_set_shape_text(sh,text)
+        # Slide 1: cover information
+        text_shape(prs.slides[0],7,f"TÓM TẮT DỰ ÁN\nĐIỆN MẶT TRỜI MÁI NHÀ\n\nChủ đầu tư:\n{customer}\nTổng thầu:\nCÔNG TY CỔ PHẦN CẢNH NGHI R.E")
+        text_shape(prs.slides[0],8,f"TP.HCM ngày {date}")
+        # Slide 3: generic project introduction, no hard-coded household/factory savings claims
+        text_shape(prs.slides[2],4,"ĐIỆN MẶT TRỜI KẾT HỢP PIN LƯU TRỮ\nGIẢM CHI PHÍ ĐIỆN – CHỦ ĐỘNG NGUỒN ĐIỆN\nGiải pháp năng lượng theo nhu cầu công trình")
+        text_shape(prs.slides[2],5,"GIẢI PHÁP ĐIỆN MẶT TRỜI CHO CÔNG TRÌNH")
+        text_shape(prs.slides[2],7,f"QUY MÔ HỆ THỐNG\nCông suất điện mặt trời: {fmt(pv)} kWp\nDung lượng lưu trữ: {fmt(battery)} kWh\nĐiện năng tiêu thụ: {fmt(monthly_load,0)} kWh/tháng\nSản lượng dự kiến: {fmt(annual,0)} kWh/năm")
+        text_shape(prs.slides[2],8,f"PHƯƠNG ÁN ĐỀ XUẤT\nTỷ lệ tự tiêu thụ dự kiến: {fmt(self_use,1)}%")
+        # Slide 4: project data table
+        s4=prs.slides[3]
+        for sh in s4.shapes:
+            if sh.has_table:
+                table=sh.table
+                mapping={
+                    "địa điểm":val("address"),"ngành nghề":val("industry","Công trình"),"quốc gia":"Việt Nam",
+                    "điện năng tiêu thụ":(fmt(monthly_load,0)+" kWh / tháng") if monthly_load else "",
+                    "điện năng":(fmt(monthly_load*12,0)+" kWh / năm") if monthly_load else "",
+                    "đơn giá điện":(fmt(price,0)+" VNĐ/kWh") if price else "",
+                    "diện tích mái":(fmt(roof,0)+" m²") if roof else "",
+                    "kết cấu mái":val("roofType")
+                }
+                for row in table.rows[1:]:
+                    label=(row.cells[0].text or "").strip().lower()
+                    for key,value in mapping.items():
+                        if key in label and value:
+                            row.cells[1].text=value; break
+        # Slide 5: sizing, tariff and usage
+        text_shape(prs.slides[4],7,f"Đơn giá điện trung bình :\n{fmt(price,0)} VNĐ/kWh\n(bao gồm VAT)")
+        text_shape(prs.slides[4],9,"Thói quen dùng điện: "+val("usagePattern","Theo phụ tải thực tế"))
+        text_shape(prs.slides[4],11,f"Hệ thống đề xuất:\nCông suất: {fmt(pv)} kWp\nDung lượng lưu trữ: {fmt(battery)} kWh\nTỉ lệ tiêu thụ điện ước tính: {fmt(self_use,1)}%")
+        text_shape(prs.slides[4],14,f"Số điện:\n~{fmt(monthly_load,0)} kWh/tháng")
+        # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
+        text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của hệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual,0)} kWh")
+        # Slide 9: equipment descriptions
+        text_shape(prs.slides[8],8,f"Biến tần: {val('invModel')}\n- Công suất: {fmt(num('invKw'),2)} kW\n- Số pha: {val('phase')}\n- Theo dõi qua ứng dụng giám sát")
+        text_shape(prs.slides[8],9,f"Pin lưu trữ: {val('batModel')}\n- Dung lượng: {fmt(battery)} kWh\n- Số lượng bộ: {fmt(num('batQty'),0)}")
+        text_shape(prs.slides[8],6,f"Tủ Solar – Tủ phân phối\nThiết bị bảo vệ và đóng cắt theo thiết kế được phê duyệt.")
+        # Slide 10: summary table. Financial outputs are intentionally not copied from sample values.
+        s10=prs.slides[9]
+        for sh in s10.shapes:
+            if sh.has_table:
+                t=sh.table
+                if len(t.rows)>1:
+                    values=[project,f"{fmt(pv)} kWp",f"{fmt(battery)} kWh",val("phase"),f"{fmt(self_use,1)}%",f"{fmt(total,0)} đ","Xem báo cáo PTTC","—","—","—"]
+                    for j,value in enumerate(values[:len(t.rows[1].cells)]):
+                        t.rows[1].cells[j].text=value
+        # Replace the actual-roof and PV-layout photos in slides 4 and 10; keep all original geometry/cropping.
+        uploads=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"id,name,path","order":"name.asc"}).json()
+        def image_group(prefix):
+            selected=[u for u in uploads if str(u.get("name","")).startswith(prefix+"__")][:4]
+            raw=[]
+            for item in selected:
+                obj=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(item["path"],safe="/"))
+                raw.append(obj.content)
+            return raw
+        real=image_group("roof-real"); layout=image_group("roof-pv")
+        def replace_at(slide_index,shape_index,images):
+            if not images:return
+            slide=prs.slides[slide_index]
+            if shape_index>=len(slide.shapes):return
+            shape=slide.shapes[shape_index]
+            if shape.shape_type!=MSO_SHAPE_TYPE.PICTURE:return
+            ratio=shape.width/max(shape.height,1)
+            collage=_ppt_photo_collage(images,ratio)
+            if collage: _ppt_replace_picture(slide,shape,collage)
+        replace_at(3,8,real); replace_at(3,9,layout)
+        replace_at(9,11,real); replace_at(9,12,layout)
+        # Save the deck while preserving the original theme, master, layout, and all static slides.
+        out=io.BytesIO(); prs.save(out); generated=out.getvalue()
+    except HTTPException: raise
+    except Exception as exc:
+        print(f"PowerPoint report generation error: {type(exc).__name__}: {exc}",flush=True)
+        raise HTTPException(500,"Không thể tạo báo giá PowerPoint: "+str(exc)[:350])
+    safe=re.sub(r"[^A-Za-z0-9._-]+","_",project).strip("._")[:60] or "Du_an"
+    filename=f"Bao_gia_{safe}.pptx"; fid=str(uuid.uuid4()); path=storage_path(pid,fid,filename)
+    sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),data=generated,headers={"Content-Type":"application/vnd.openxmlformats-officedocument.presentationml.presentation","x-upsert":"true"})
+    try:
+        sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":filename,"path":path},headers={"Prefer":"return=minimal"})
+    except Exception:
+        sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]}); raise
+    return {"id":fid,"name":filename,"slides":len(prs.slides),"photos":{"roof_real":len(real),"roof_pv":len(layout)}}
 
 @app.post("/api/projects/{pid}/gsa-capture")
 async def capture_global_solar_atlas(pid:str,request:Request):
