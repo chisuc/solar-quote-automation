@@ -1,4 +1,4 @@
-import os, json, uuid, secrets, hmac, mimetypes
+import os, json, uuid, secrets, hmac, mimetypes, asyncio
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -15,6 +15,12 @@ SUPABASE_SECRET_KEY=os.getenv("SUPABASE_SECRET_KEY","")
 BUCKET=os.getenv("SUPABASE_BUCKET","customer-files")
 app=FastAPI(title="Solar Quote Automation")
 app.add_middleware(SessionMiddleware,secret_key=SESSION_SECRET,same_site="lax",https_only=os.getenv("COOKIE_SECURE","true")=="true")
+
+# Reuse one headless Chromium process across GSA requests; pages/contexts remain request-scoped.
+_gsa_playwright=None
+_gsa_browser=None
+_gsa_browser_lock=asyncio.Lock()
+_gsa_capture_lock=asyncio.Lock()
 
 def auth(r):
     if r.session.get("user")!=USER:
@@ -202,6 +208,7 @@ async def pvwatts(request:Request):
 
 @app.post("/api/projects/{pid}/gsa-capture")
 async def capture_global_solar_atlas(pid:str,request:Request):
+    global _gsa_playwright,_gsa_browser
     auth(request)
     from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
     p=await request.json()
@@ -214,101 +221,112 @@ async def capture_global_solar_atlas(pid:str,request:Request):
     url=f"https://globalsolaratlas.info/detail?c={lat},{lon},10&m=site&s={lat},{lon}"
     labels=["Bảng dữ liệu bức xạ (Map data)","Bản đồ vệ tinh","Horizon & Sunpath","Bản đồ tiềm năng PVOUT"]
     try:
-        async with async_playwright() as playwright:
-            import os, subprocess, sys
-            executable=playwright.chromium.executable_path
-            if not os.path.exists(executable):
-                install=subprocess.run([sys.executable,"-m","playwright","install","chromium"],capture_output=True,text=True,timeout=240)
-                if install.returncode!=0: raise RuntimeError("Không cài được Chromium: "+(install.stderr or install.stdout)[-1000:])
-            browser=await playwright.chromium.launch(headless=True,args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-extensions"])
-            page=await browser.new_page(viewport={"width":1920,"height":1200},device_scale_factor=1)
-            await page.goto(url,wait_until="domcontentloaded",timeout=90000)
-            try: await page.wait_for_load_state("networkidle",timeout=25000)
-            except PlaywrightTimeoutError: pass
-            await page.wait_for_timeout(22000)
-            # Xác định đúng bốn panel theo nội dung/loại bản đồ, không chọn ngẫu nhiên các node lớn.
-            found=await page.evaluate("""() => {
-              const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>250&&r.height>130&&s.display!=='none'&&s.visibility!=='hidden'};
-              const mark=(e,k)=>{if(e)e.setAttribute('data-gsa-shot',k)};
-              // 1) Bảng "Map data" và các chỉ số PVOUT/GHI/DNI.
-              const texts=[...document.querySelectorAll('body *')].filter(e=>e.children.length===0&&/Map data/i.test(e.textContent||''));
-              let table=null;
-              for(const t of texts){let p=t;for(let n=0;n<7&&p;n++,p=p.parentElement){if(visible(p)&&/PVOUT specific/i.test(p.innerText||'')&&/DNI/i.test(p.innerText||'')&&/GHI/i.test(p.innerText||'')){table=p;break}}if(table)break}
-              // Chỉ chụp card Map data chứa các chỉ số; KHÔNG mở rộng lên toàn bộ Site Info.
-              if(table){mark(table,'metrics')}
-              // 2,4) Hai Leaflet maps: map vệ tinh thường xuất hiện trước, PVOUT map sau.
-              const maps=[...document.querySelectorAll('.leaflet-container')].filter(visible);
-              if(maps[0])mark(maps[0],'satellite');
-              if(maps.length>1)mark(maps[maps.length-1],'pvout');
-              // 3) Sunpath: tìm text tiêu đề trước (không áp điều kiện kích thước lên chính dòng tiêu đề),
-              // sau đó đi lên ancestor chứa chart SVG/Canvas.
-              const allEls=[...document.querySelectorAll('body *')];
-              const titleNodes=allEls.filter(e=>{
-                const tx=((e.innerText||'')+' '+(e.textContent||'')+' '+(e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')).trim();
-                return tx.length>0&&tx.length<180&&/solar azimuth|solar elevation|horizon|sunpath|sun path/i.test(tx);
-              }).sort((a,b)=>{
-                const at=((a.innerText||'')+' '+(a.textContent||'')).length;
-                const bt=((b.innerText||'')+' '+(b.textContent||'')).length;
-                return at-bt;
-              });
-              let chart=null;
-              for(const t of titleNodes){
-                let q=t;
-                for(let n=0;n<12&&q;n++,q=q.parentElement){
-                  if(!visible(q))continue;
-                  const r=q.getBoundingClientRect(),txt=(q.innerText||'').toLowerCase();
-                  const hasPlot=!!q.querySelector('svg,canvas');
-                  const compassWords=['north','east','south','west'].filter(w=>txt.includes(w)).length;
-                  if(r.width>300&&r.height>160&&r.width<innerWidth*.98&&r.height<innerHeight*1.8&&(hasPlot||compassWords>=2)){
-                    chart=q;break;
+        # Serialize captures because a shared browser is reused; browser startup happens only once.
+        async with _gsa_capture_lock:
+            async with _gsa_browser_lock:
+                if _gsa_playwright is None:
+                    _gsa_playwright=await async_playwright().start()
+                if _gsa_browser is None or not _gsa_browser.is_connected():
+                    executable=_gsa_playwright.chromium.executable_path
+                    if not os.path.exists(executable):
+                        import subprocess,sys
+                        install=subprocess.run([sys.executable,"-m","playwright","install","chromium"],capture_output=True,text=True,timeout=240)
+                        if install.returncode!=0: raise RuntimeError("Không cài được Chromium: "+(install.stderr or install.stdout)[-1000:])
+                    _gsa_browser=await _gsa_playwright.chromium.launch(headless=True,args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-extensions"])
+                browser=_gsa_browser
+            context=await browser.new_context(viewport={"width":1920,"height":1200},device_scale_factor=1)
+            page=await context.new_page()
+            try:
+                # domcontentloaded returns much earlier than networkidle on map-heavy pages.
+                await page.goto(url,wait_until="domcontentloaded",timeout=60000)
+                # Wait for the actual four source panels, not an arbitrary 22-second delay.
+                await page.wait_for_function("""() => {
+                  const body=(document.body?.innerText||'').toLowerCase();
+                  const maps=[...document.querySelectorAll('.leaflet-container')].filter(e=>{const r=e.getBoundingClientRect();return r.width>250&&r.height>130});
+                  const hasMetrics=/pvout specific/.test(body)&&/\\bdni\\b/.test(body)&&/\\bghi\\b/.test(body);
+                  const hasSun=/solar azimuth|solar elevation|horizon and sunpath|horizon & sunpath/i.test(body);
+                  return hasMetrics&&maps.length>=2&&hasSun;
+                }""",timeout=35000)
+                # Allow only a short tile/render settling window; don't wait for unrelated analytics.
+                try:
+                    await page.wait_for_function("""() => {
+                      const maps=[...document.querySelectorAll('.leaflet-container')];
+                      return maps.length>=2&&maps.every(m=>{
+                        const tiles=[...m.querySelectorAll('img.leaflet-tile')];
+                        return tiles.length===0||tiles.some(t=>t.complete&&t.naturalWidth>0);
+                      });
+                    }""",timeout=5000)
+                except PlaywrightTimeoutError: pass
+                found=await page.evaluate("""() => {
+                  const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>250&&r.height>130&&s.display!=='none'&&s.visibility!=='hidden'};
+                  const mark=(e,k)=>{if(e)e.setAttribute('data-gsa-shot',k)};
+                  const texts=[...document.querySelectorAll('body *')].filter(e=>e.children.length===0&&/Map data/i.test(e.textContent||''));
+                  let table=null;
+                  for(const t of texts){let p=t;for(let n=0;n<7&&p;p=p.parentElement,n++){if(visible(p)&&/PVOUT specific/i.test(p.innerText||'')&&/DNI/i.test(p.innerText||'')&&/GHI/i.test(p.innerText||'')){table=p;break}}if(table)break}
+                  if(table)mark(table,'metrics');
+                  const maps=[...document.querySelectorAll('.leaflet-container')].filter(visible);
+                  if(maps[0])mark(maps[0],'satellite');
+                  if(maps.length>1)mark(maps[maps.length-1],'pvout');
+                  const allEls=[...document.querySelectorAll('body *')];
+                  const titleNodes=allEls.filter(e=>{
+                    const tx=((e.innerText||'')+' '+(e.textContent||'')+' '+(e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')).trim();
+                    return tx.length>0&&tx.length<180&&/solar azimuth|solar elevation|horizon|sunpath|sun path/i.test(tx);
+                  }).sort((a,b)=>(((a.innerText||'')+(a.textContent||'')).length)-(((b.innerText||'')+(b.textContent||'')).length));
+                  let chart=null;
+                  for(const t of titleNodes){
+                    let q=t;
+                    for(let n=0;n<12&&q;q=q.parentElement,n++){
+                      if(!visible(q))continue;
+                      const r=q.getBoundingClientRect(),txt=(q.innerText||'').toLowerCase();
+                      const hasPlot=!!q.querySelector('svg,canvas');
+                      const words=['north','east','south','west'].filter(w=>txt.includes(w)).length;
+                      if(r.width>300&&r.height>160&&r.width<innerWidth*.98&&r.height<innerHeight*1.8&&(hasPlot||words>=2)){chart=q;break}
+                    }
+                    if(chart)break;
                   }
-                }
-                if(chart)break;
-              }
-              // Fallback: chart libraries can render title as SVG paths or canvas, so score nearby
-              // containers using text in all ancestors, not only the immediate parent.
-              if(!chart){
-                const plotEls=[...document.querySelectorAll('svg,canvas')].filter(visible);
-                const ranked=plotEls.map(e=>{
-                  let q=e, best=null;
-                  for(let n=0;n<8&&q;n++,q=q.parentElement){
-                    const r=q.getBoundingClientRect(),txt=(q.innerText||'').toLowerCase();
-                    if(r.width<300||r.height<160||r.width>innerWidth*.98||r.height>innerHeight*1.8)continue;
-                    const words=['north','east','south','west'].filter(w=>txt.includes(w)).length;
-                    const hours=(txt.match(/\\b(?:[6-9]|1[0-8])h\\b/g)||[]).length;
-                    const score=words*4+hours*2+(/solar azimuth|solar elevation|horizon|sunpath/.test(txt)?12:0);
-                    if(!best||score>best.score)best={e:q,score,area:r.width*r.height};
+                  if(!chart){
+                    const plots=[...document.querySelectorAll('svg,canvas')].filter(visible);
+                    const ranked=plots.map(e=>{
+                      let q=e,best=null;
+                      for(let n=0;n<8&&q;q=q.parentElement,n++){
+                        const r=q.getBoundingClientRect(),txt=(q.innerText||'').toLowerCase();
+                        if(r.width<300||r.height<160||r.width>innerWidth*.98||r.height>innerHeight*1.8)continue;
+                        const words=['north','east','south','west'].filter(w=>txt.includes(w)).length;
+                        const hours=(txt.match(/\\b(?:[6-9]|1[0-8])h\\b/g)||[]).length;
+                        const score=words*4+hours*2+(/solar azimuth|solar elevation|horizon|sunpath/.test(txt)?12:0);
+                        if(!best||score>best.score)best={e:q,score,area:r.width*r.height};
+                      }return best;
+                    }).filter(x=>x&&x.score>=4).sort((a,b)=>b.score-a.score||a.area-b.area);
+                    if(ranked.length)chart=ranked[0].e;
                   }
-                  return best;
-                }).filter(x=>x&&x.score>=4).sort((a,b)=>b.score-a.score||a.area-b.area);
-                if(ranked.length)chart=ranked[0].e;
-              }
-              if(chart)mark(chart,'sunpath');
-              return {metrics:!!table,maps:maps.length,sunpath:!!chart,titleMatches:titleNodes.length,plotElements:document.querySelectorAll('svg,canvas').length};
-            }""")
-            await page.wait_for_timeout(1500)
-            required=["metrics","satellite","sunpath","pvout"]
-            status=await page.evaluate("""() => Object.fromEntries(['metrics','satellite','sunpath','pvout'].map(k=>{const e=document.querySelector('[data-gsa-shot="'+k+'"]');return [k,!!e]}))""")
-            if not all(status.values()):
-                await browser.close()
-                raise HTTPException(502,"Chưa tìm thấy đủ 4 panel gốc trên Global Solar Atlas. Phát hiện: "+str(status)+".")
-            images=[]
-            for key in required:
-                target=page.locator(f'[data-gsa-shot="{key}"]').first
-                await target.scroll_into_view_if_needed(timeout=15000)
-                await page.wait_for_timeout(800)
-                data=await target.screenshot(type="png",timeout=40000,animations="disabled")
-                if not data or len(data)<3000: raise RuntimeError(f"Ảnh panel {key} rỗng.")
-                images.append(data)
-            await browser.close()
-        saved=[]
-        for i,data in enumerate(images):
-            fid=str(uuid.uuid4()); filename=f"global-solar-atlas-{i+1}.png"; path=storage_path(pid,fid,filename)
-            sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),data=data,headers={"Content-Type":"image/png","x-upsert":"true"})
-            try: sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":filename,"path":path},headers={"Prefer":"return=minimal"})
-            except Exception:
-                sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]}); raise
-            saved.append({"id":fid,"name":filename,"label":labels[i]})
+                  if(chart)mark(chart,'sunpath');
+                  return {metrics:!!table,maps:maps.length,sunpath:!!chart};
+                }""")
+                required=["metrics","satellite","sunpath","pvout"]
+                status=await page.evaluate("""() => Object.fromEntries(['metrics','satellite','sunpath','pvout'].map(k=>[k,!!document.querySelector('[data-gsa-shot="'+k+'"]')]))""")
+                if not all(status.values()):
+                    raise HTTPException(502,"Chưa tìm thấy đủ 4 panel gốc trên Global Solar Atlas. Phát hiện: "+str(status)+".")
+                # Sequential element screenshots avoid scroll races; original PNG resolution is preserved.
+                images=[]
+                for key in required:
+                    target=page.locator(f'[data-gsa-shot="{key}"]').first
+                    await target.scroll_into_view_if_needed(timeout=10000)
+                    data=await target.screenshot(type="png",timeout=25000,animations="disabled")
+                    if not data or len(data)<3000: raise RuntimeError(f"Ảnh panel {key} rỗng.")
+                    images.append(data)
+            finally:
+                await context.close()
+        # Supabase storage writes are blocking requests; run four independent uploads concurrently.
+        async def save_one(i,data):
+            def upload_sync():
+                fid=str(uuid.uuid4()); filename=f"global-solar-atlas-{i+1}.png"; path=storage_path(pid,fid,filename)
+                sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),data=data,headers={"Content-Type":"image/png","x-upsert":"true"})
+                try: sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":filename,"path":path},headers={"Prefer":"return=minimal"})
+                except Exception:
+                    sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]}); raise
+                return {"id":fid,"name":filename,"label":labels[i]}
+            return await asyncio.to_thread(upload_sync)
+        saved=await asyncio.gather(*(save_one(i,data) for i,data in enumerate(images)))
         return {"images":saved,"source_url":url,"count":len(saved),"detected_panels":status}
     except HTTPException: raise
     except Exception as exc:
