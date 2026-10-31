@@ -47,7 +47,7 @@ def storage_path(pid, fid, filename):
     return f"{pid}/{fid}{ext}"
 
 LOGIN="""<!doctype html><html lang='vi'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Solar Quote</title><style>body{font:15px Arial;background:#eef4f1;display:grid;place-items:center;min-height:95vh;color:#17382c}.card{background:white;padding:30px;border-radius:14px;width:min(380px,90vw)}input,button{box-sizing:border-box;width:100%;padding:12px;margin:8px 0;border:1px solid #ccd9d2;border-radius:8px}button{background:#16845b;color:white;border:0;font-weight:bold}</style><form class='card' method='post' action='/login'><h2>☀ SOLAR QUOTE AUTOMATION</h2><p>Đăng nhập hệ thống</p><input name='username' placeholder='Tài khoản' required><input name='password' type='password' placeholder='Mật khẩu' required><button>ĐĂNG NHẬP</button>{}</form></html>"""
-PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Solar Quote Automation</title><style>*{box-sizing:border-box}body{margin:0;background:#f3f6f5;font:14px Arial;color:#20372e}header{background:#15352b;color:white;padding:18px 24px}main{max-width:1150px;margin:24px auto;padding:0 14px}.panel{background:white;border:1px solid #dce5e1;border-radius:12px;padding:18px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.field label{display:block;font-size:12px;font-weight:bold;margin-bottom:6px}input,select{width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:7px}.btn{padding:10px 14px;background:#16845b;color:white;border:0;border-radius:7px;font-weight:bold;cursor:pointer}.alt{background:#e8f1ed;color:#245441}.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.project{padding:12px;border:1px solid #dce5e1;border-radius:8px;margin:8px 0;display:flex;justify-content:space-between}.muted{color:#687a73;font-size:12px}.gsa-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.gsa-card{border:1px solid #dce5e1;border-radius:9px;padding:12px;min-width:0}.gsa-card h4{margin:0 0 12px;color:#245441}.gsa-metrics{width:100%;border-collapse:collapse}.gsa-metrics td{padding:7px 5px;border-bottom:1px solid #e8efeb}.gsa-metrics td:last-child{text-align:right;font-weight:bold}.gsa-sun svg{width:100%;height:auto}.gsa-card a{display:inline-block;margin-top:8px;color:#0879b9}@media(max-width:850px){.compass-field{grid-column:1/-1}.pv-chart-box{grid-column:1/-1;max-width:100%;min-height:250px}.compass-wrap{flex-wrap:wrap;justify-content:flex-start;gap:18px}.compass{width:210px!important;height:210px!important;min-width:210px;min-height:210px;flex-basis:210px}}@media(max-width:700px){.gsa-grid{grid-template-columns:1fr}}.compass-field{grid-column:1/3;min-width:0}.compass{width:220px!important;height:220px!important;min-width:220px;min-height:220px;max-width:none!important;max-height:none!important;aspect-ratio:1/1;flex:0 0 220px;border-radius:50%;box-sizing:border-box}.pv-chart-box{grid-column:3;grid-row:auto;align-self:center;display:flex;flex-direction:column;justify-content:center;min-width:0;width:100%;min-height:300px;margin:0!important;padding:14px 12px;overflow:hidden;border:1px solid #dce5e1;border-radius:10px;background:#fff}.pv-chart-box h4{font-size:13px;line-height:1.3;margin:0 0 8px;color:#245441}.pv-chart-box #pvChartCanvas{width:100%;overflow:hidden;flex:1;display:flex;align-items:center;justify-content:center}.pv-chart-box svg{display:block;width:100%;height:auto;min-width:0!important}.compass-wrap{display:flex;align-items:center;justify-content:center;gap:26px;flex-wrap:nowrap;padding:8px 4px}.compass{width:220px;height:220px;flex:0 0 220px}.compass-info{max-width:285px}.needle{height:68px}.needle i{border-bottom-width:60px}.needle b{top:60px}.compass-info{min-width:150px;flex:1}.compass-info .row{gap:6px}.compass-info .btn{font-size:12px;padding:8px 10px}.compass{width:250px;height:250px;max-width:75vw;max-height:75vw;border:3px solid #9aafa5;border-radius:50%;position:relative;background:radial-gradient(circle,#fff 0 57%,#edf4f0 58% 100%);box-shadow:inset 0 0 0 7px #f7faf8,0 2px 8px #00000012;touch-action:none;user-select:none;cursor:crosshair}.compass:before,.compass:after{content:'';position:absolute;background:#d7e2dc;left:50%;top:10%;width:1px;height:80%;transform:translateX(-50%)}.compass:after{transform:translateX(-50%) rotate(90deg)}.dir{position:absolute;font-size:11px;font-weight:bold;color:#52665d;z-index:2}.north{top:7px;left:50%;transform:translateX(-50%);color:#c0392b}.south{bottom:7px;left:50%;transform:translateX(-50%)}.east{right:8px;top:50%;transform:translateY(-50%)}.west{left:8px;top:50%;transform:translateY(-50%)}.ne{right:34px;top:32px}.se{right:34px;bottom:32px}.sw{left:34px;bottom:32px}.nw{left:34px;top:32px}.needle{position:absolute;z-index:3;left:50%;top:50%;width:8px;height:88px;transform:translate(-50%,-100%) rotate(180deg);transform-origin:50% 100%;pointer-events:none}.needle i{position:absolute;left:0;top:0;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:78px solid #e04435;filter:drop-shadow(0 1px 1px #777)}.needle b{position:absolute;left:1px;top:78px;width:6px;height:10px;background:#667b71;border-radius:0 0 3px 3px}.compass-center{position:absolute;z-index:4;left:50%;top:50%;width:15px;height:15px;border-radius:50%;background:#fff;border:4px solid #315c49;transform:translate(-50%,-50%);pointer-events:none}.compass-info{min-width:230px;flex:1}.compass-info .row{margin:12px 0}@media(max-width:650px){.grid{grid-template-columns:1fr 1fr}}@media(max-width:450px){.grid{grid-template-columns:1fr}}</style></head><body><header><b>☀ SOLAR QUOTE AUTOMATION</b> <button class='btn alt' onclick='logout()' style='float:right'>Đăng xuất</button></header><main><h1>Trung tâm báo giá điện mặt trời</h1><p class='muted'>Website MVP · Dữ liệu lưu trên máy chủ</p>
+PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Solar Quote Automation</title><style>*{box-sizing:border-box}body{margin:0;background:#f3f6f5;font:14px Arial;color:#20372e}header{background:#15352b;color:white;padding:18px 24px}main{width:min(96vw,1580px);max-width:none;margin:24px auto;padding:0 14px}.panel{background:white;border:1px solid #dce5e1;border-radius:12px;padding:18px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.field label{display:block;font-size:12px;font-weight:bold;margin-bottom:6px}input,select{width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:7px}.btn{padding:10px 14px;background:#16845b;color:white;border:0;border-radius:7px;font-weight:bold;cursor:pointer}.alt{background:#e8f1ed;color:#245441}.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.project{padding:12px;border:1px solid #dce5e1;border-radius:8px;margin:8px 0;display:flex;justify-content:space-between}.muted{color:#687a73;font-size:12px}.gsa-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.gsa-card{border:1px solid #dce5e1;border-radius:9px;padding:12px;min-width:0}.gsa-card h4{margin:0 0 12px;color:#245441}.gsa-metrics{width:100%;border-collapse:collapse}.gsa-metrics td{padding:7px 5px;border-bottom:1px solid #e8efeb}.gsa-metrics td:last-child{text-align:right;font-weight:bold}.gsa-sun svg{width:100%;height:auto}.gsa-card a{display:inline-block;margin-top:8px;color:#0879b9}@media(max-width:850px){.compass-field{grid-column:1/-1}.pv-chart-box{grid-column:1/-1;max-width:100%;min-height:250px}.compass-wrap{flex-wrap:wrap;justify-content:flex-start;gap:18px}.compass{width:210px!important;height:210px!important;min-width:210px;min-height:210px;flex-basis:210px}}@media(max-width:700px){.gsa-grid{grid-template-columns:1fr}}.compass-field{grid-column:1/3;min-width:0}.compass{width:220px!important;height:220px!important;min-width:220px;min-height:220px;max-width:none!important;max-height:none!important;aspect-ratio:1/1;flex:0 0 220px;border-radius:50%;box-sizing:border-box}.pv-chart-box{grid-column:3;grid-row:auto;align-self:center;display:flex;flex-direction:column;justify-content:center;min-width:0;width:100%;min-height:300px;margin:0!important;padding:14px 12px;overflow:hidden;border:1px solid #dce5e1;border-radius:10px;background:#fff}.pv-chart-box h4{font-size:13px;line-height:1.3;margin:0 0 8px;color:#245441}.pv-chart-box #pvChartCanvas{width:100%;overflow:hidden;flex:1;display:flex;align-items:center;justify-content:center}.pv-chart-box svg{display:block;width:100%;height:auto;min-width:0!important}.compass-wrap{display:flex;align-items:center;justify-content:center;gap:26px;flex-wrap:nowrap;padding:8px 4px}.compass{width:220px;height:220px;flex:0 0 220px}.compass-info{max-width:285px}.needle{height:68px}.needle i{border-bottom-width:60px}.needle b{top:60px}.compass-info{min-width:150px;flex:1}.compass-info .row{gap:6px}.compass-info .btn{font-size:12px;padding:8px 10px}.compass{width:250px;height:250px;max-width:75vw;max-height:75vw;border:3px solid #9aafa5;border-radius:50%;position:relative;background:radial-gradient(circle,#fff 0 57%,#edf4f0 58% 100%);box-shadow:inset 0 0 0 7px #f7faf8,0 2px 8px #00000012;touch-action:none;user-select:none;cursor:crosshair}.compass:before,.compass:after{content:'';position:absolute;background:#d7e2dc;left:50%;top:10%;width:1px;height:80%;transform:translateX(-50%)}.compass:after{transform:translateX(-50%) rotate(90deg)}.dir{position:absolute;font-size:11px;font-weight:bold;color:#52665d;z-index:2}.north{top:7px;left:50%;transform:translateX(-50%);color:#c0392b}.south{bottom:7px;left:50%;transform:translateX(-50%)}.east{right:8px;top:50%;transform:translateY(-50%)}.west{left:8px;top:50%;transform:translateY(-50%)}.ne{right:34px;top:32px}.se{right:34px;bottom:32px}.sw{left:34px;bottom:32px}.nw{left:34px;top:32px}.needle{position:absolute;z-index:3;left:50%;top:50%;width:8px;height:88px;transform:translate(-50%,-100%) rotate(180deg);transform-origin:50% 100%;pointer-events:none}.needle i{position:absolute;left:0;top:0;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:78px solid #e04435;filter:drop-shadow(0 1px 1px #777)}.needle b{position:absolute;left:1px;top:78px;width:6px;height:10px;background:#667b71;border-radius:0 0 3px 3px}.compass-center{position:absolute;z-index:4;left:50%;top:50%;width:15px;height:15px;border-radius:50%;background:#fff;border:4px solid #315c49;transform:translate(-50%,-50%);pointer-events:none}.compass-info{min-width:230px;flex:1}.compass-info .row{margin:12px 0}@media(max-width:650px){.grid{grid-template-columns:1fr 1fr}}@media(max-width:450px){.grid{grid-template-columns:1fr}}</style></head><body><header><b>☀ SOLAR QUOTE AUTOMATION</b> <button class='btn alt' onclick='logout()' style='float:right'>Đăng xuất</button></header><main><h1>Trung tâm báo giá điện mặt trời</h1><p class='muted'>Website MVP · Dữ liệu lưu trên máy chủ</p>
 <div class='panel'><h3>Khách hàng & công trình</h3><div class='grid'><div class='field'><label>Tên dự án</label><input id='projectName'></div><div class='field'><label>Khách hàng / công ty</label><input id='customer'></div><div class='field'><label>Người liên hệ</label><input id='contact'></div><div class='field'><label>Số điện thoại</label><input id='phone'></div><div class='field'><label>Địa chỉ</label><input id='address'></div><div class='field'><label>Ngày báo giá</label><input id='date' type='date'></div><div class='field'><label>Diện tích mái (m²)</label><input id='roof' type='number'></div><div class='field'><label>Kết cấu mái</label><select id='roofType'><option>Mái tôn</option><option>Mái bê tông</option><option>Mái ngói</option></select></div></div></div>
 <div class='panel'><h3>Cấu hình hệ thống</h3><div class='grid'><div class='field'><label>Thương hiệu tấm pin</label><input id='panelBrand'></div><div class='field'><label>Công suất tấm pin (Wp)</label><input id='panelW' type='number' value='625'></div><div class='field'><label>Số lượng tấm</label><input id='panelQty' type='number' value='30'></div><div class='field'><label>Công suất PV (kWp)</label><input id='pv' readonly></div><div class='field'><label>Inverter / Model</label><input id='invModel'></div><div class='field'><label>Công suất inverter (kW)</label><input id='invKw' type='number'></div><div class='field'><label>Số pha</label><select id='phase'><option>1 pha</option><option>3 pha</option></select></div><div class='field'><label>Pin lưu trữ / Model</label><input id='batModel'></div><div class='field'><label>Dung lượng mỗi bộ (kWh)</label><input id='batKwh' type='number' step='.01'></div><div class='field'><label>Số lượng bộ pin</label><input id='batQty' type='number' value='0'></div><div class='field'><label>Tổng dung lượng pin (kWh)</label><input id='batTotal' readonly></div></div></div>
 <div class='panel'><h3>Điện năng & báo giá</h3><div class='grid'><div class='field'><label>Tiêu thụ tháng (kWh)</label><input id='load' type='number'></div><div class='field'><label>Sản lượng ĐMT năm (kWh)</label><input id='annual' type='number'></div><div class='field'><label>Tự tiêu thụ dự kiến (%)</label><input id='self' type='number' value='80'></div><div class='field'><label>Đơn giá điện (đ/kWh)</label><input id='price' type='number'></div><div class='field'><label>Tổng trước VAT (VNĐ)</label><input id='pre' type='number'></div><div class='field'><label>VAT (%)</label><input id='vat' type='number' value='8'></div><div class='field'><label>Tiền VAT</label><input id='vatMoney' readonly></div><div class='field'><label>Tổng sau VAT</label><input id='grand' readonly></div></div></div>
@@ -178,90 +178,73 @@ async def pvwatts(request:Request):
 @app.post("/api/projects/{pid}/gsa-capture")
 async def capture_global_solar_atlas(pid:str,request:Request):
     auth(request)
-    import re
     from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
     p=await request.json()
     try:
         lat=float(p.get("lat")); lon=float(p.get("lon"))
-        if not (-90<=lat<=90 and -180<=lon<=180):
-            raise HTTPException(400,"Tọa độ không hợp lệ.")
-    except (TypeError,ValueError):
-        raise HTTPException(400,"Vui lòng nhập tọa độ hợp lệ.")
+        if not (-90<=lat<=90 and -180<=lon<=180): raise HTTPException(400,"Tọa độ không hợp lệ.")
+    except (TypeError,ValueError): raise HTTPException(400,"Vui lòng nhập tọa độ hợp lệ.")
     check=sb_request("GET",db("projects"),params={"id":f"eq.{pid}","select":"id"}).json()
     if not check: raise HTTPException(404,"Hãy lưu dự án trước khi chụp ảnh.")
     url=f"https://globalsolaratlas.info/detail?c={lat},{lon},10&m=site&s={lat},{lon}"
-    labels=["Thông số bức xạ & PV","Bản đồ vị trí công trình","Horizon & Sunpath","Bản đồ tiềm năng PVOUT"]
+    labels=["Bảng dữ liệu bức xạ (Map data)","Bản đồ vệ tinh","Horizon & Sunpath","Bản đồ tiềm năng PVOUT"]
     try:
         async with async_playwright() as playwright:
-            # Render may not apply render.yaml build changes to an existing service; install the exact browser revision on demand if missing.
             import os, subprocess, sys
             executable=playwright.chromium.executable_path
             if not os.path.exists(executable):
                 install=subprocess.run([sys.executable,"-m","playwright","install","chromium"],capture_output=True,text=True,timeout=240)
-                if install.returncode!=0:
-                    raise RuntimeError("Không cài được Chromium tự động: "+(install.stderr or install.stdout)[-1200:])
+                if install.returncode!=0: raise RuntimeError("Không cài được Chromium: "+(install.stderr or install.stdout)[-1000:])
             browser=await playwright.chromium.launch(headless=True,args=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-extensions"])
-            page=await browser.new_page(viewport={"width":1600,"height":1100},device_scale_factor=1)
+            page=await browser.new_page(viewport={"width":1920,"height":1200},device_scale_factor=1)
             await page.goto(url,wait_until="domcontentloaded",timeout=90000)
             try: await page.wait_for_load_state("networkidle",timeout=25000)
             except PlaywrightTimeoutError: pass
-            await page.wait_for_timeout(18000)
-            candidates=await page.evaluate("""() => {
-              const nodes=[...document.querySelectorAll('section,article,main,canvas,svg,img,[class*=panel],[class*=card],[class*=widget],[class*=map]')];
-              return nodes.map((e,i)=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);
-                return {i,tag:e.tagName,cls:String(e.className||'').slice(0,160),text:(e.innerText||e.getAttribute('aria-label')||'').slice(0,500),
-                  x:r.x+scrollX,y:r.y+scrollY,w:r.width,h:r.height,display:s.display,visibility:s.visibility};
-              }).filter(x=>x.w>=280&&x.h>=150&&x.w<innerWidth*1.1&&x.h<innerHeight*2.5&&x.display!=='none'&&x.visibility!=='hidden');
+            await page.wait_for_timeout(22000)
+            # Xác định đúng bốn panel theo nội dung/loại bản đồ, không chọn ngẫu nhiên các node lớn.
+            found=await page.evaluate("""() => {
+              const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>250&&r.height>130&&s.display!=='none'&&s.visibility!=='hidden'};
+              const mark=(e,k)=>{if(e)e.setAttribute('data-gsa-shot',k)};
+              // 1) Bảng "Map data" và các chỉ số PVOUT/GHI/DNI.
+              const texts=[...document.querySelectorAll('body *')].filter(e=>e.children.length===0&&/Map data/i.test(e.textContent||''));
+              let table=null;
+              for(const t of texts){let p=t;for(let n=0;n<7&&p;n++,p=p.parentElement){if(visible(p)&&/PVOUT specific/i.test(p.innerText||'')&&/DNI/i.test(p.innerText||'')&&/GHI/i.test(p.innerText||'')){table=p;break}}if(table)break}
+              if(table){let p=table;while(p.parentElement&&visible(p.parentElement)&&p.parentElement.getBoundingClientRect().width<innerWidth*.9&&p.parentElement.getBoundingClientRect().height<innerHeight*1.1)p=p.parentElement;table=p;mark(table,'metrics')}
+              // 2,4) Hai Leaflet maps: map vệ tinh thường xuất hiện trước, PVOUT map sau.
+              const maps=[...document.querySelectorAll('.leaflet-container')].filter(visible);
+              if(maps[0])mark(maps[0],'satellite');
+              if(maps.length>1)mark(maps[maps.length-1],'pvout');
+              // 3) Sunpath chart: tìm tiêu đề Solar azimuth rồi lấy vùng biểu đồ SVG/Highcharts bao quanh.
+              const chartTexts=[...document.querySelectorAll('svg text,svg tspan,div,span')].filter(e=>/Solar azimuth/i.test(e.textContent||''));
+              let chart=null;
+              for(const t of chartTexts){let p=t.closest('svg');if(p&&visible(p)){chart=p.parentElement||p;break}let q=t;for(let n=0;n<6&&q;n++,q=q.parentElement){if(visible(q)&&(/Solar azimuth/i.test(q.innerText||'')||q.querySelector('svg,canvas'))){chart=q;break}}if(chart)break}
+              if(chart){let p=chart;for(let n=0;n<3&&p.parentElement&&p.parentElement.getBoundingClientRect().width<innerWidth*.85;n++)p=p.parentElement;chart=p;mark(chart,'sunpath')}
+              return {metrics:!!table,maps:maps.length,sunpath:!!chart};
             }""")
-            groups=[
-              re.compile(r'PVOUT|GHI|DNI|GTI|irradiation|specific yield|annual',re.I),
-              re.compile(r'map|satellite|location|site',re.I),
-              re.compile(r'horizon|sunpath|sun path',re.I),
-              re.compile(r'PVOUT|potential|photovoltaic',re.I)
-            ]
-            chosen=[]
-            for idx,pat in enumerate(groups):
-                ranked=[]
-                for c in candidates:
-                    if any(abs(c["x"]-q["x"])<30 and abs(c["y"]-q["y"])<30 for q in chosen): continue
-                    score=(1200 if pat.search(c["text"]+" "+c["cls"]) else 0)+min(c["w"]*c["h"]/10000,100)
-                    if idx==1 and ("map" in c["cls"].lower() or c["tag"] in ("CANVAS","IMG")): score+=80
-                    if idx==2 and (c["tag"].lower()=="svg" or "horizon" in c["cls"].lower()): score+=100
-                    if score>0: ranked.append((score,c))
-                if ranked: chosen.append(max(ranked,key=lambda x:x[0])[1])
-            if len(chosen)<4:
-                for c in sorted(candidates,key=lambda x:x["w"]*x["h"],reverse=True):
-                    if not any(abs(c["x"]-q["x"])<35 and abs(c["y"]-q["y"])<35 for q in chosen):
-                        chosen.append(c)
-                    if len(chosen)>=4: break
-            if len(chosen)<4:
+            await page.wait_for_timeout(1500)
+            required=["metrics","satellite","sunpath","pvout"]
+            status=await page.evaluate("""() => Object.fromEntries(['metrics','satellite','sunpath','pvout'].map(k=>{const e=document.querySelector('[data-gsa-shot="'+k+'"]');return [k,!!e]}))""")
+            if not all(status.values()):
                 await browser.close()
-                raise HTTPException(502,"Global Solar Atlas chưa hiển thị đủ 4 vùng có thể chụp.")
+                raise HTTPException(502,"Chưa tìm thấy đủ 4 panel gốc trên Global Solar Atlas. Phát hiện: "+str(status)+".")
             images=[]
-            selector="section,article,main,canvas,svg,img,[class*=panel],[class*=card],[class*=widget],[class*=map]"
-            for c in chosen[:4]:
-                # Locator screenshot tự cuộn phần tử vào viewport và tự xử lý clip,
-                # tránh lỗi clip nằm ngoài ảnh trang khi phần tử ở xa phía dưới.
-                target=page.locator(selector).nth(c["i"])
-                try:
-                    data=await target.screenshot(type="png",timeout=30000,animations="disabled")
-                    if data and len(data)>3000: images.append(data)
-                except Exception as shot_error:
-                    print(f"GSA panel screenshot {len(images)+1} failed: {type(shot_error).__name__}: {shot_error}",flush=True)
+            for key in required:
+                target=page.locator(f'[data-gsa-shot="{key}"]').first
+                await target.scroll_into_view_if_needed(timeout=15000)
+                await page.wait_for_timeout(800)
+                data=await target.screenshot(type="png",timeout=40000,animations="disabled")
+                if not data or len(data)<3000: raise RuntimeError(f"Ảnh panel {key} rỗng.")
+                images.append(data)
             await browser.close()
-        if len(images)!=4:
-            raise HTTPException(502,f"Chỉ chụp được {len(images)}/4 khu vực trên Global Solar Atlas; chưa lưu bộ ảnh chưa đầy đủ.")
         saved=[]
         for i,data in enumerate(images):
             fid=str(uuid.uuid4()); filename=f"global-solar-atlas-{i+1}.png"; path=storage_path(pid,fid,filename)
             sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),data=data,headers={"Content-Type":"image/png","x-upsert":"true"})
-            try:
-                sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":filename,"path":path},headers={"Prefer":"return=minimal"})
+            try: sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":filename,"path":path},headers={"Prefer":"return=minimal"})
             except Exception:
-                sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]})
-                raise
+                sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]}); raise
             saved.append({"id":fid,"name":filename,"label":labels[i]})
-        return {"images":saved,"source_url":url,"count":len(saved)}
+        return {"images":saved,"source_url":url,"count":len(saved),"detected_panels":status}
     except HTTPException: raise
     except Exception as exc:
         print(f"Global Solar Atlas capture error: {type(exc).__name__}: {exc}",flush=True)
