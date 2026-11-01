@@ -315,6 +315,20 @@ def _bill_extract_values(text):
             if value is not None: tou[key]=value
     kwh=sum(tou.values()) if len(tou)==3 else None
     if kwh is None:
+        # EVN VAT invoice form: one line item "Điện tiêu thụ kỳ ...", unit kWh,
+        # quantity in the quantity column, then unit price and amount.
+        invoice_patterns=[
+            r"Điện tiêu thụ.{0,220}?\bkwh\s+([\d.,]+)\s+(?:-|[\d.,]+)\s+[\d.,]+",
+            r"Điện tiêu thụ.{0,220}?\bkwh\s+([\d.,]+)"
+        ]
+        for pat in invoice_patterns:
+            m=re.search(pat,normalized,re.I)
+            if m:
+                value=_bill_number(m.group(1))
+                if value and value>0:
+                    kwh=value
+                    break
+    if kwh is None:
         # Common EVNSPC total row: "Tổng: 19.247" following the consumption table.
         m=re.search(r"Tổng\s*:\s*([\d.,]+)",normalized,re.I)
         if m:
