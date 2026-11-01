@@ -492,27 +492,30 @@ def _bill_ocr_image(image):
     parts=[]
     for index,(x1,y1,x2,y2) in enumerate(boxes):
         crop=image.crop((int(w*x1),int(h*y1),int(w*x2),int(h*y2)))
-        crop=crop.resize((crop.width*2,crop.height*2),Image.Resampling.LANCZOS)
+        # These EVNSPC bills are already high-resolution (about 1,000 px wide).
+        # Do not 2x-upscale every crop: it multiplies Tesseract work on small Render instances
+        # without improving recognition of the printed kWh figures.
         crop=ImageOps.autocontrast(crop)
+        crop_started=time.perf_counter()
         try:
             part=pytesseract.image_to_string(
-                crop,lang="vie",config="--oem 1 --psm 6",timeout=7
+                crop,lang="vie",config="--oem 1 --psm 6",timeout=12
             )
         except RuntimeError as exc:
             if "timeout" not in str(exc).lower():
                 raise
-            # Retry once at a smaller size. If this block is still slow, keep
-            # processing the remaining bill regions instead of failing the whole file.
+            # Retry once at a smaller size; continue to other regions if still slow.
             crop.thumbnail((700,520),Image.Resampling.LANCZOS)
             try:
                 part=pytesseract.image_to_string(
-                    crop,lang="vie",config="--oem 1 --psm 6",timeout=4
+                    crop,lang="vie",config="--oem 1 --psm 6",timeout=7
                 )
             except RuntimeError as retry_exc:
                 if "timeout" not in str(retry_exc).lower():
                     raise
                 print(f"Bill OCR crop {index+1} timed out twice; continuing with other regions",flush=True)
                 part=""
+        print(f"Bill OCR crop {index+1}: seconds={round(time.perf_counter()-crop_started,2)}; chars={len(part.strip())}",flush=True)
         parts.append(part)
 
     text="\n".join(parts)
