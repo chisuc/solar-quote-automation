@@ -124,9 +124,9 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Bắt đầu nghỉ trưa</label><input id='plantLunchStart' type='time' value='11:30'></div>
 <div class='field'><label>Kết thúc nghỉ trưa</label><input id='plantLunchEnd' type='time' value='13:00'></div>
 <div class='field'><label>% máy dừng trong giờ nghỉ trưa</label><input id='plantLunchOff' type='number' min='0' max='100' value='80'></div>
-<div class='field'><label>Điện tiêu thụ ngoài ca / ngày nghỉ (%)</label><input id='plantOutsideShare' type='number' min='0' max='100' value='10'></div>
+<div class='field'><label>Mức phụ tải duy trì ngoài ca / ngày nghỉ (%)</label><input id='plantOutsideShare' type='number' min='0' max='100' value='10'></div>
 </div>
-<p class='muted'>Tỷ lệ máy dừng 80% nghĩa là còn khoảng 20% mức tải vận hành trong giờ nghỉ trưa. Điện ngoài ca/ngày nghỉ là phần ước tính trong tổng kWh hóa đơn nhưng không thuộc ca sản xuất đã khai báo.</p>
+<p class='muted'>Tỷ lệ máy dừng 80% nghĩa là còn khoảng 20% mức tải vận hành trong giờ nghỉ trưa. Mức phụ tải duy trì ngoài ca 10% nghĩa là tải nền ngoài giờ sản xuất bằng 10% mức tải trong ca.</p>
 <p class='muted'>Có thể chỉnh sửa lại 23 điểm phụ tải sau khi tự tạo, hoặc nhập thủ công nếu có số đo thực tế.</p>
 <div class='row'><button class='btn alt' type='button' onclick='fillFlatLoadProfile()'>Phân bổ đều theo điện ban ngày</button><button class='btn alt' type='button' onclick='clearLoadProfile()'>Xóa dữ liệu nhập</button><button class='btn' type='button' onclick='drawLoadPvComparison()'>Vẽ / cập nhật biểu đồ</button></div>
 <div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
@@ -257,14 +257,14 @@ function buildLoadProfileFromTou(){
    if(mode==='new'){if(!sunday&&((minute>=570&&minute<690)||(minute>=1020&&minute<1200)))return 'peak';if(minute>=1320||minute<240)return 'offpeak';return 'normal'}
    if(!sunday&&minute>=1050&&minute<1350)return 'peak';if(minute<360)return 'offpeak';return 'normal';
   };
-  const eff={normal:0,peak:0,offpeak:0};
-  dates.forEach(date=>{if(!dayType(date))return;for(let m=startMin;m<endMin;m+=30){const c=tariff(date,m),overlap=Math.max(0,Math.min(m+30,lunchEnd)-Math.max(m,lunchStart))/30;eff[c]+=.5*(1-overlap*lunchOff)}});
-  const energy={normal:normalKwh*(1-outsideShare),peak:peakKwh*(1-outsideShare),offpeak:offKwh*(1-outsideShare)},kw={};
-  for(const k of ['normal','peak','offpeak']){if(energy[k]>0&&eff[k]<=0)throw Error('Không có giờ hoạt động trong khung '+k+'. Kiểm tra lịch ca và khung giá.');kw[k]=eff[k]>0?energy[k]/eff[k]:0}
+  const eff={normal:0,peak:0,offpeak:0},outsideFactor=Number($('plantOutsideShare').value)/100;
+  dates.forEach(date=>{const working=dayType(date);for(let m=0;m<1440;m+=30){const c=tariff(date,m);let factor=outsideFactor;if(working&&m>=startMin&&m<endMin){const overlap=Math.max(0,Math.min(m+30,lunchEnd)-Math.max(m,lunchStart))/30;factor=1-overlap*lunchOff}eff[c]+=.5*factor}});
+  const energy={normal:normalKwh,peak:peakKwh,offpeak:offKwh},kw={};
+  for(const k of ['normal','peak','offpeak']){if(energy[k]>0&&eff[k]<=0)throw Error('Không đủ giờ quy đổi cho khung '+k+'. Hãy kiểm tra tỷ lệ tải nền ngoài ca.');kw[k]=eff[k]>0?energy[k]/eff[k]:0}
   const workShare=workDays/7;
   loadProfileTimes.forEach((t,i)=>{
    const minute=360+i*30,dt=new Date(Date.UTC(2026,0,5)),sun=new Date(Date.UTC(2026,0,4));
-   const point=(date)=>{if(!dayType(date)||minute<startMin||minute>=endMin)return 0;const c=tariff(date,minute),isLunch=minute<lunchEnd&&minute+30>lunchStart;return kw[c]*(isLunch?1-lunchOff:1)};
+   const point=(date)=>{const working=dayType(date);if(!working||minute<startMin||minute>=endMin)return kw[tariff(date,minute)]*outsideFactor;const overlap=Math.max(0,Math.min(minute+30,lunchEnd)-Math.max(minute,lunchStart))/30;return kw[tariff(date,minute)]*(1-overlap*lunchOff)};
    const v=workShare*point(dt)+(1-workShare)*point(sun);
    $('loadProfile'+i).value=v.toFixed(2);
   });
