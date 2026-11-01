@@ -411,7 +411,14 @@ async function ocrBillInBrowser(file){
   const result=await worker.recognize(crop,{rotateAuto:true});
   outputs.push(result.data.text||'');
  }
- return outputs.join('\n');
+ let combined=outputs.join('\n');
+ if(combined.trim().length<100){
+  await worker.setParameters({tessedit_pageseg_mode:'11'});
+  const full=await worker.recognize(canvas);
+  if((full.data.text||'').trim().length>combined.trim().length)combined=full.data.text||combined;
+  await worker.setParameters({tessedit_pageseg_mode:'6'});
+ }
+ return combined;
 }
 async function readBills(){
  const files=[...$('billFiles').files];
