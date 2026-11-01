@@ -563,14 +563,14 @@ def _bill_extract_values(text):
         elif "khung gio cao diem" in plain_line: key="peak"
         elif "khung gio thap diem" in plain_line: key="offpeak"
         if key and key not in tou:
-            values=re.findall(r"\\d[\\d.,]*",line)
+            values=re.findall(r"\d[\d.,]*",line)
             if values:
                 value=_bill_number(values[-1])
                 if value is not None: tou[key]=value
     total_hint=None
     for line in lines:
         plain_line=_bill_plain(line)
-        tm_total=re.search(r"tong\\s*:\\s*([\\d.,]+)",plain_line,re.I)
+        tm_total=re.search(r"tong\s*:\s*([\d.,]+)",plain_line,re.I)
         if tm_total:
             total_hint=_bill_number(tm_total.group(1))
             break
