@@ -110,7 +110,13 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <p class='muted' id='loadSizingAssumptions' style='margin-top:10px'></p>
 <div style='border-top:1px solid #e2eae5;margin-top:16px;padding-top:14px'>
 <h3 style='margin:0 0 6px'>Đường phụ tải & so sánh công suất PV (06:00–17:00)</h3>
-<p class='muted'>Nhập công suất phụ tải trung bình tại từng mốc 30 phút (kW). Có 23 mốc, bao gồm 06:00 và 17:00.</p>
+<p class='muted'>Chọn khung giờ áp dụng cho hóa đơn điện kinh doanh 3 pha. Website sẽ phân bổ kWh giờ bình thường/cao điểm/thấp điểm theo đúng thời gian và số ngày trong các kỳ hóa đơn đã chọn.</p>
+<div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));margin:10px 0'>
+<div class='field'><label>Khung giờ tính toán</label><select id='touScheduleMode'><option value='old'>KHUNG GIỜ CŨ</option><option value='new'>KHUNG GIỜ MỚI</option></select></div>
+<div class='field' style='align-self:end'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo đường phụ tải từ kWh hóa đơn</button></div>
+</div>
+<div class='muted' id='touScheduleDescription' style='margin:6px 0 12px'></div>
+<p class='muted'>Có thể chỉnh sửa lại 23 điểm phụ tải sau khi tự tạo, hoặc nhập thủ công nếu có số đo thực tế.</p>
 <div class='row'><button class='btn alt' type='button' onclick='fillFlatLoadProfile()'>Phân bổ đều theo điện ban ngày</button><button class='btn alt' type='button' onclick='clearLoadProfile()'>Xóa dữ liệu nhập</button><button class='btn' type='button' onclick='drawLoadPvComparison()'>Vẽ / cập nhật biểu đồ</button></div>
 <div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
 <div id='loadPvChart' style='display:none;margin-top:16px;border:1px solid #e2eae5;border-radius:9px;padding:10px'>
@@ -209,6 +215,51 @@ function calculateLoadSizing(){
  }catch(e){$('loadSizingStatus').textContent=e.message;loadSizingResult=null;return null}
 }
 const loadProfileTimes=Array.from({length:23},(_,i)=>{const mins=360+i*30;return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0')});
+function updateTouScheduleDescription(){
+ const mode=$('touScheduleMode')?.value||'old';
+ $('touScheduleDescription').textContent=mode==='old'
+ ?'Khung giờ cũ: Cao điểm Thứ Hai–Thứ Bảy 17:30–22:30; bình thường 06:00–17:30 và 22:30–24:00 (Chủ nhật 06:00–24:00); thấp điểm tất cả các ngày 00:00–06:00.'
+ :'Khung giờ mới: Cao điểm Thứ Hai–Thứ Bảy 09:30–11:30 và 17:00–20:00; bình thường 04:00–09:30, 11:30–17:00 và 20:00–22:00 (Chủ nhật 04:00–22:00); thấp điểm tất cả các ngày 22:00–04:00 hôm sau.';
+}
+function buildLoadProfileFromTou(){
+ try{
+  const group=$('billGroupSelect').value;
+  if(!group)throw Error('Hãy chọn nhóm hóa đơn điện kinh doanh 3 pha trước.');
+  const rows=billBatchResults.filter(x=>x._included&&billGroupKey(x)===group);
+  if(!rows.length)throw Error('Nhóm hóa đơn đã chọn không có dữ liệu.');
+  if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Một số hóa đơn thiếu ngày bắt đầu/kết thúc kỳ. Cần đủ ngày kỳ hóa đơn để đếm số ngày Chủ nhật.');
+  if(rows.some(x=>!x.tou_kwh||!Number.isFinite(Number(x.tou_kwh.normal))||!Number.isFinite(Number(x.tou_kwh.peak))||!Number.isFinite(Number(x.tou_kwh.offpeak))))throw Error('Hóa đơn cần có đủ kWh giờ bình thường, cao điểm và thấp điểm.');
+  let weekdays=0,sundays=0,normalKwh=0,peakKwh=0,offKwh=0,totalDays=0;
+  const parseDate=v=>{const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return null;return new Date(Date.UTC(+m[1],+m[2]-1,+m[3]))};
+  rows.forEach(row=>{
+   const start=parseDate(row.period_start),end=parseDate(row.period_end);
+   if(!start||!end||end<start)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));
+   for(let d=new Date(start);d<=end;d.setUTCDate(d.getUTCDate()+1)){if(d.getUTCDay()===0)sundays++;else weekdays++;totalDays++}
+   normalKwh+=Number(row.tou_kwh.normal)||0;peakKwh+=Number(row.tou_kwh.peak)||0;offKwh+=Number(row.tou_kwh.offpeak)||0;
+  });
+  const mode=$('touScheduleMode').value;
+  const normalHours=weekdays*13+sundays*18,peakHours=weekdays*5,offHours=totalDays*6;
+  if(normalHours<=0||peakHours<=0)throw Error('Không đủ ngày làm việc để phân bổ điện năng giờ cao điểm. Kiểm tra kỳ hóa đơn.');
+  const normalKw=normalKwh/normalHours,peakKw=peakHours>0?peakKwh/peakHours:0,offKw=offHours>0?offKwh/offHours:0;
+  const sundayShare=sundays/totalDays,weekdayShare=weekdays/totalDays;
+  loadProfileTimes.forEach((t,i)=>{
+   const minute=360+i*30;
+   let weekdayClass='normal',sundayClass='normal';
+   if(mode==='new'){
+    if(minute>=570&&minute<690)weekdayClass='peak';
+    if(minute>=1020&&minute<1200)weekdayClass='peak';
+   }else{
+    if(minute>=1050&&minute<1350)weekdayClass='peak';
+   }
+   const rate=c=>c==='peak'?peakKw:c==='off'?offKw:normalKw;
+   const kw=weekdayShare*rate(weekdayClass)+sundayShare*rate(sundayClass);
+   $('loadProfile'+i).value=kw.toFixed(2);
+  });
+  const dailyDayKwh=loadProfileTimes.slice(0,-1).reduce((sum,_,i)=>sum+(Number($('loadProfile'+i).value)+Number($('loadProfile'+(i+1)).value))*.25,0);
+  $('loadSizingStatus').textContent='Đã dựng đường phụ tải theo '+(mode==='old'?'KHUNG GIỜ CŨ':'KHUNG GIỜ MỚI')+' từ '+rows.length+' hóa đơn, '+totalDays+' ngày ('+weekdays+' ngày Thứ Hai–Thứ Bảy, '+sundays+' Chủ nhật). Điện năng 06:00–17:00 ước tính: '+dailyDayKwh.toFixed(1)+' kWh/ngày.';
+  drawLoadPvComparison();
+ }catch(e){$('loadSizingStatus').textContent=e.message}
+}
 function initLoadProfileInputs(){
  const box=$('loadProfileInputs');if(!box)return;
  box.innerHTML=loadProfileTimes.map((t,i)=>'<label style="font-size:11px;font-weight:600">'+t+'<input id="loadProfile'+i+'" type="number" min="0" step="0.1" value="" placeholder="kW" style="margin-top:4px;padding:8px"></label>').join('');
@@ -325,7 +376,7 @@ async function renderProjectImageLists(items){let real=items.filter(x=>String(x.
 async function listFiles(){if(!pid)return;let a=await api('/api/projects/'+pid+'/files');let ordinary=a.filter(x=>!String(x.name||'').startsWith('roof-real__')&&!String(x.name||'').startsWith('roof-pv__'));$('fileList').innerHTML=ordinary.map(x=>`<div><a href='/api/files/${x.id}'>${esc(x.name)}</a></div>`).join('')||'Chưa có file';renderProjectImageLists(a);return a}
 function exportJson(){let b=new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='du-an.json';a.click()}
 async function logout(){await fetch('/logout',{method:'POST'});location='/login-page'}
-initLoadProfileInputs();$('date').value=new Date().toISOString().slice(0,10);$('newFolderDate').value=new Date().toISOString().slice(0,10);calc();renderFolders().catch(e=>$('folderStatus').textContent=e.message);
+initLoadProfileInputs();$('touScheduleMode').addEventListener('change',updateTouScheduleDescription);updateTouScheduleDescription();$('date').value=new Date().toISOString().slice(0,10);$('newFolderDate').value=new Date().toISOString().slice(0,10);calc();renderFolders().catch(e=>$('folderStatus').textContent=e.message);
 </script></main></body></html>"""
 
 @app.get("/health")
