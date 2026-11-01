@@ -461,12 +461,23 @@ def home(request:Request):
 
 
 def _bill_ocr_image(image):
-    # Normalize phone photos before OCR: correct EXIF orientation, grayscale,
-    # contrast enhancement and bounded resolution reduce Tesseract work.
+    # EVN bill photos often contain large blank margins and charts. Keep OCR
+    # bounded so a free Render instance does not spend 25+ seconds per image.
     image=ImageOps.exif_transpose(image).convert("L")
-    image.thumbnail((2000,2000),Image.Resampling.LANCZOS)
+    image.thumbnail((1400,1400),Image.Resampling.LANCZOS)
     image=ImageOps.autocontrast(image)
-    return pytesseract.image_to_string(image,lang="vie+eng",config="--oem 1 --psm 6",timeout=25)
+    try:
+        return pytesseract.image_to_string(
+            image,lang="vie+eng",config="--oem 1 --psm 11",timeout=12
+        )
+    except RuntimeError as exc:
+        if "timeout" not in str(exc).lower():
+            raise
+        # One smaller/faster retry for unusually large or complex images.
+        image.thumbnail((950,950),Image.Resampling.LANCZOS)
+        return pytesseract.image_to_string(
+            image,lang="vie+eng",config="--oem 1 --psm 11",timeout=8
+        )
 
 def _bill_read_document(data,ext):
     text=""; used_ocr=False
