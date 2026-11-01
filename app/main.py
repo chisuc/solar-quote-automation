@@ -502,7 +502,7 @@ def _bill_ocr_image(image):
             parts.append(pytesseract.image_to_string(
                 region,lang="vie",config="--oem 1 --psm 6",timeout=6
             ))
-        return "\\n".join(parts)
+        return "\n".join(parts)
 
 def _bill_read_document(data,ext):
     text=""; used_ocr=False
