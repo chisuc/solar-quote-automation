@@ -516,20 +516,34 @@ def _bill_ocr_image(image):
         parts.append(part)
 
     text="\n".join(parts)
-    # Unknown layouts may not align with the EVNSPC blocks; retain a bounded
-    # whole-page fallback only when the cropped text is clearly insufficient.
+    print(f"Bill OCR crop result: size={w}x{h}; chars={len(text.strip())}; crop_chars={[len(p.strip()) for p in parts]}",flush=True)
+    # Try the complete page with more than one segmentation mode. This handles
+    # bills whose layout differs from the assumed EVNSPC crop coordinates.
     if len(text.strip())<100:
-        image.thumbnail((1100,1100),Image.Resampling.LANCZOS)
-        try:
-            fallback=pytesseract.image_to_string(
-                image,lang="vie",config="--oem 1 --psm 6",timeout=6
-            )
-            if len(fallback.strip())>len(text.strip()):
-                text=fallback
-        except RuntimeError as exc:
-            if "timeout" not in str(exc).lower():
-                raise
-            print("Bill OCR full-page fallback timed out; returning any text recovered from crops",flush=True)
+        page=image.copy()
+        page.thumbnail((1200,1600),Image.Resampling.LANCZOS)
+        attempts=[
+            (page,"vie","--oem 1 --psm 11",7),
+            (page,"vie+eng","--oem 1 --psm 6",7),
+            (ImageOps.autocontrast(page).point(lambda p: 255 if p>165 else 0),
+             "vie+eng","--oem 1 --psm 11",7)
+        ]
+        best=text
+        for attempt_no,(candidate,language,config,seconds) in enumerate(attempts,1):
+            try:
+                fallback=pytesseract.image_to_string(
+                    candidate,lang=language,config=config,timeout=seconds
+                )
+                print(f"Bill OCR full-page attempt {attempt_no}: chars={len(fallback.strip())}; lang={language}; config={config}",flush=True)
+                if len(fallback.strip())>len(best.strip()):
+                    best=fallback
+                if len(best.strip())>=100:
+                    break
+            except RuntimeError as exc:
+                if "timeout" not in str(exc).lower():
+                    raise
+                print(f"Bill OCR full-page attempt {attempt_no} timed out; continuing",flush=True)
+        text=best
     return text
 
 def _bill_read_document(data,ext):
