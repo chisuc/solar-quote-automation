@@ -86,7 +86,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <h3>⚡ Tính toán công suất dự kiến</h3>
 <p class='muted'>Tải hóa đơn điện PDF/ảnh hoặc nhập số liệu thủ công. Website tính điện năng ngày/đêm và đề xuất sơ bộ công suất PV, dung lượng pin lưu trữ.</p>
 <div class='grid'>
-<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện nhiều tháng / nhiều kỳ (PDF, JPG, PNG, WEBP — tối đa 50 file/lần)</label><div class='row'><input id='billFiles' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' multiple style='max-width:520px'><button class='btn alt' type='button' onclick='readBills()'>Đọc & tổng hợp hóa đơn</button><span id='billReadStatus' class='muted'></span></div><div class='muted'>Có thể chọn đồng thời hóa đơn VAT và bảng kê chi tiết. Website sẽ phát hiện cùng kỳ để tránh cộng trùng.</div></div><div class='field' style='grid-column:1/-1'><div id='billBatchSummary' class='muted'>Chưa có dữ liệu hóa đơn.</div><div style='overflow-x:auto;margin-top:8px'><table id='billBatchTable' style='width:100%;border-collapse:collapse;font-size:13px;display:none'><thead><tr><th>Tệp / kỳ hóa đơn</th><th>Loại điện</th><th>Cấp áp</th><th>Bình thường</th><th>Cao điểm</th><th>Thấp điểm</th><th>Tổng kWh</th><th>Tiền điện</th><th>Giá bình quân</th><th>Trạng thái</th></tr></thead><tbody id='billBatchRows'></tbody></table></div></div>
+<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện nhiều tháng / nhiều kỳ (PDF, JPG, PNG, WEBP — tối đa 50 file/lần)</label><div class='row'><input id='billFiles' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' multiple style='max-width:520px'><button class='btn alt' type='button' onclick='readBills()'>Đọc & tổng hợp hóa đơn</button><span id='billReadStatus' class='muted'></span></div><div class='muted'>Có thể chọn đồng thời hóa đơn VAT và bảng kê chi tiết. Website sẽ phát hiện cùng kỳ để tránh cộng trùng.</div></div><div class='field' style='grid-column:1/-1'><div id='billBatchSummary' class='muted'>Chưa có dữ liệu hóa đơn.</div><div id='billMonthlySummary' style='margin-top:12px'></div><div style='overflow-x:auto;margin-top:8px'><table id='billBatchTable' style='width:100%;border-collapse:collapse;font-size:13px;display:none'><thead><tr><th>Tệp / kỳ hóa đơn</th><th>Loại điện</th><th>Cấp áp</th><th>Bình thường</th><th>Cao điểm</th><th>Thấp điểm</th><th>Tổng kWh</th><th>Tiền điện</th><th>Giá bình quân</th><th>Trạng thái</th></tr></thead><tbody id='billBatchRows'></tbody></table></div></div>
 <div class='field'><label>Tổng điện năng hóa đơn (kWh)</label><input id='billMonthKwh' type='number' min='0' step='.01' placeholder='Nhập hoặc kiểm tra số đọc được'></div>
 <div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
 <div class='field'><label>Tỷ lệ tiêu thụ ban ngày (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
@@ -216,6 +216,8 @@ function renderBillBatch(){
  const types=[...new Set(included.map(x=>x.customer_type).filter(x=>x&&x!=='Chưa xác định'))],volts=[...new Set(included.map(x=>x.voltage).filter(Boolean))],avg=total>0&&amount>0?amount/total:null;
  let summary=rows.length?'<b>Đã đọc '+rows.length+' file · '+included.length+' kỳ được tính · '+rows.filter(x=>x._duplicate).length+' file trùng kỳ được loại khỏi tổng.</b><br>Tổng điện năng: <b>'+billFmt(total)+' kWh</b> · Số ngày: <b>'+billFmt(days)+'</b> · Giá bình quân: <b>'+(avg?billFmt(avg)+' đ/kWh':'Chưa đủ dữ liệu tiền điện')+'</b><br>Loại điện: '+(types.join(', ')||'Chưa xác định')+' · Cấp điện áp: '+(volts.join(', ')||'Chưa xác định'):'Chưa có dữ liệu hóa đơn.';
  summary+=hasTou?'<br>Khung giờ: Bình thường '+billFmt(normal)+' kWh · Cao điểm '+billFmt(peak)+' kWh · Thấp điểm '+billFmt(offpeak)+' kWh':'<br>Chưa có bảng kê đủ ba khung giờ để tổng hợp bình thường / cao điểm / thấp điểm.';
+ const monthly={};included.forEach(x=>{const key=(x.period_start||'').slice(0,7)||'Không rõ tháng';if(!monthly[key])monthly[key]={kwh:0,days:0,amount:0,normal:0,peak:0,offpeak:0};const m=monthly[key];m.kwh+=Number(x.monthly_kwh)||0;m.days+=Number(x.period_days)||0;m.amount+=Number(x.amount_vnd)||0;m.normal+=Number((x.tou_kwh||{}).normal)||0;m.peak+=Number((x.tou_kwh||{}).peak)||0;m.offpeak+=Number((x.tou_kwh||{}).offpeak)||0});
+ $('billMonthlySummary').innerHTML=Object.keys(monthly).sort().map(k=>{const m=monthly[k],p=m.kwh&&m.amount?m.amount/m.kwh:null;return '<div style="padding:8px 0;border-bottom:1px solid #e2eae5"><b>'+esc(k)+'</b> · '+billFmt(m.kwh)+' kWh · '+billFmt(m.days)+' ngày · Giá bình quân '+(p?billFmt(p)+' đ/kWh':'chưa đủ dữ liệu')+'<br><small>Bình thường '+billFmt(m.normal)+' · Cao điểm '+billFmt(m.peak)+' · Thấp điểm '+billFmt(m.offpeak)+' kWh</small></div>'}).join('');
  $('billBatchSummary').innerHTML=summary;$('billBatchTable').style.display=rows.length?'table':'none';
  $('billBatchRows').innerHTML=rows.map(x=>'<tr style="border-top:1px solid #dce5e1"><td>'+esc(x.filename||'')+'<br><small>'+esc(x.period||'')+'</small></td><td>'+esc(x.customer_type||'Chưa rõ')+'</td><td>'+esc(x.voltage||'—')+'</td><td>'+billFmt((x.tou_kwh||{}).normal)+'</td><td>'+billFmt((x.tou_kwh||{}).peak)+'</td><td>'+billFmt((x.tou_kwh||{}).offpeak)+'</td><td>'+billFmt(x.monthly_kwh)+'</td><td>'+billFmt(x.amount_vnd)+'</td><td>'+(x.average_price_vnd_kwh?billFmt(x.average_price_vnd_kwh):'—')+'</td><td>'+(x._duplicate?'Trùng kỳ — không cộng':x.error?esc(x.error):x._included?'Được tính':'Không tính')+'</td></tr>').join('');
  if(included.length){$('billMonthKwh').value=total.toFixed(2);$('billDays').value=days||30}
@@ -420,9 +422,19 @@ def _bill_extract_values(text):
                 da=datetime(int(dm.group(2)),int(dm.group(1)),1)
                 start_iso=da.strftime("%Y-%m-%d")
             except Exception: pass
-    tariff="Ba giá" if len(tou)==3 else ("Một giá / tổng hợp" if kwh is not None else "Chưa xác định")
+    # Residential tier rows are retained separately; never infer missing tier quantities.
+    tiers={}
+    for line in lines:
+        tm=re.search(r"bậc\s*(\d+)\s*[^\d]{0,35}([\d.,]+)\s*(?:kwh)?\s+([\d.,]+)\s+([\d.,]+)",line,re.I)
+        if tm:
+            qty=_bill_number(tm.group(2))
+            rate=_bill_number(tm.group(3))
+            money=_bill_number(tm.group(4))
+            if qty is not None:
+                tiers["bac_"+tm.group(1)]={"kwh":qty,"unit_price":rate,"amount_vnd":money}
+    tariff="Ba giá" if len(tou)==3 else ("Theo bậc thang" if tiers else ("Một giá / tổng hợp" if kwh is not None else "Chưa xác định"))
     return {"monthly_kwh":kwh,"period_days":period_days,"period":period,"period_start":start_iso,"period_end":end_iso,
-            "tou_kwh":tou,"customer_type":customer_type,"voltage":voltage,"amount_vnd":amount,
+            "tou_kwh":tou,"tiers":tiers,"customer_type":customer_type,"voltage":voltage,"amount_vnd":amount,
             "average_price_vnd_kwh":(amount/kwh if amount and kwh else None),"tariff_type":tariff,
             "raw_text":"\n".join(lines)[:7000]}
 @app.post("/api/bill/read")
