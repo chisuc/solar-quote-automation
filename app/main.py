@@ -564,9 +564,13 @@ def _bill_extract_values(text):
         elif "khung gio thap diem" in plain_line: key="offpeak"
         if key and key not in tou:
             values=re.findall(r"\d[\d.,]*",line)
-            if values:
-                value=_bill_number(values[-1])
-                if value is not None: tou[key]=value
+            # A TOU row normally contains multiplier, new index, old index,
+            # then consumption. Ignore stray OCR digits after the row.
+            if len(values)>=4: raw_value=values[3]
+            elif len(values)==3: raw_value=values[2]
+            else: raw_value=None
+            value=_bill_number(raw_value) if raw_value else None
+            if value is not None: tou[key]=value
     total_hint=None
     for line in lines:
         plain_line=_bill_plain(line)
