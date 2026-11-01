@@ -109,7 +109,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 </div>
 <p class='muted' id='loadSizingAssumptions' style='margin-top:10px'></p>
 <div style='border-top:1px solid #e2eae5;margin-top:16px;padding-top:14px'>
-<h3 style='margin:0 0 6px'>Đường phụ tải & so sánh công suất PV (06:00–17:00)</h3>
+<h3 style='margin:0 0 6px'>Biểu đồ phụ tải nhà máy (06:00–17:00)</h3>
 <p class='muted'>Dùng cho hóa đơn sản xuất/kinh doanh có đủ 3 khung giờ. Website phân bổ kWh theo lịch giờ điện, ngày làm việc và ca sản xuất để ước tính đường phụ tải; không thể khôi phục chính xác biểu đồ đo thực tế chỉ từ hóa đơn.</p>
 <div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));margin:10px 0'>
 <div class='field'><label>Khung giờ tính toán</label><select id='touScheduleMode'><option value='old'>KHUNG GIỜ CŨ</option><option value='new'>KHUNG GIỜ MỚI</option></select></div>
@@ -132,7 +132,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
 <div id='loadPvChart' style='display:none;margin-top:16px;border:1px solid #e2eae5;border-radius:9px;padding:10px'>
 <div id='loadPvChartSvg'></div>
-<div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#16845b'>━ Phụ tải nhà máy</span><span style='color:#e58b22'>━ Công suất PV ước tính</span></div>
+<div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#16845b'>━ Phụ tải nhà máy (kW)</span></div>
 <div id='loadPvMetrics' class='grid' style='margin-top:12px'></div>
 <p class='muted' id='loadPvNote' style='margin:10px 0 0'></p>
 </div>
@@ -294,25 +294,20 @@ function fillFlatLoadProfile(){
 function drawLoadPvComparison(){
  try{
   const load=loadProfileTimes.map((t,i)=>{const raw=$('loadProfile'+i).value.trim();if(raw==='')throw Error('Vui lòng nhập đủ phụ tải tại 23 mốc 30 phút.');const v=Number(raw);if(!Number.isFinite(v)||v<0)throw Error('Phụ tải phải là số không âm tại mốc '+t+'.');return v});
-  const r=loadSizingResult||calculateLoadSizing();if(!r)return;
-  const pvKwp=n('panelW')*n('panelQty')/1000||r.pvKwp,psh=n('billPsh')||4,pr=.8;
-  if(pvKwp<=0)throw Error('Chưa có công suất PV. Hãy nhập số lượng và công suất tấm pin hoặc tính sizing trước.');
-  const raw=loadProfileTimes.map((_,i)=>Math.sin(Math.PI*i/22));
-  const rawEnergy=raw.slice(0,-1).reduce((a,v,i)=>a+(v+raw[i+1])*.25,0);
-  const pvScale=rawEnergy>0?pvKwp*psh*pr/rawEnergy:0;
-  const pv=raw.map(v=>v*pvScale);
-  let loadKwh=0,pvKwh=0,selfKwh=0,deficit=0,surplus=0;
-  for(let i=0;i<22;i++){const l=(load[i]+load[i+1])*.25,p=(pv[i]+pv[i+1])*.25;loadKwh+=l;pvKwh+=p;selfKwh+=Math.min(l,p);deficit+=Math.max(l-p,0);surplus+=Math.max(p-l,0)}
-  const W=900,H=340,L=58,R=18,T=24,B=42,pw=W-L-R,ph=H-T-B,max=Math.max(1,...load,...pv)*1.12;
+  const energy=load.slice(0,-1).reduce((sum,v)=>sum+v*.5,0);
+  const peak=Math.max(...load),average=energy/11;
+  const W=900,H=340,L=58,R=18,T=24,B=42,pw=W-L-R,ph=H-T-B,max=Math.max(1,...load)*1.12;
   const x=i=>L+pw*i/22,y=v=>T+ph*(1-v/max);
   let grid='',labels='';
   for(let k=0;k<=4;k++){const val=max*k/4,yy=y(val);grid+='<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="#e4ece8"/><text x="'+(L-9)+'" y="'+(yy+4)+'" text-anchor="end" fill="#687a73" font-size="11">'+val.toFixed(0)+'</text>'}
   loadProfileTimes.forEach((t,i)=>{if(i%2===0||i===22)labels+='<text x="'+x(i)+'" y="'+(H-13)+'" text-anchor="middle" fill="#52665d" font-size="11">'+t+'</text>'});
-  const line=arr=>arr.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
-  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ phụ tải và công suất PV từ 6 giờ đến 17 giờ">'+grid+'<path d="'+line(load)+'" fill="none" stroke="#16845b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="'+line(pv)+'" fill="none" stroke="#e58b22" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
+  // Step-after profile: hold each 30-minute load level, then change vertically at the next timestamp.
+  let step='M'+x(0).toFixed(1)+' '+y(load[0]).toFixed(1);
+  for(let i=1;i<load.length;i++)step+=' L'+x(i).toFixed(1)+' '+y(load[i-1]).toFixed(1)+' L'+x(i).toFixed(1)+' '+y(load[i]).toFixed(1);
+  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ phụ tải nhà máy dạng bậc thang từ 6 giờ đến 17 giờ">'+grid+'<path d="'+step+'" fill="none" stroke="#16845b" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div><h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div></div>';
-  $('loadPvMetrics').innerHTML=card('Điện năng phụ tải 06–17',loadKwh,'kWh')+card('Điện PV ước tính 06–17',pvKwh,'kWh')+card('PV tự tiêu thụ trực tiếp',selfKwh,'kWh')+card('Điện thiếu từ lưới',deficit,'kWh')+card('Điện PV dư',surplus,'kWh')+card('Tỷ lệ PV tự dùng',pvKwh>0?selfKwh/pvKwh*100:0,'% sản lượng PV');
-  $('loadPvNote').textContent='PV được mô phỏng theo đường cong sin từ 06:00 đến 17:00, chuẩn hóa theo công suất PV '+pvKwp.toFixed(2)+' kWp, PSH '+psh.toFixed(1)+' giờ/ngày và PR 80%. Đây là đường cong giả định để so sánh sơ bộ, chưa thay thế dữ liệu PVWatts theo giờ hoặc đo bức xạ thực tế.';
+  $('loadPvMetrics').innerHTML=card('Điện năng phụ tải 06–17',energy,'kWh')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình 06–17',average,'kW');
+  $('loadPvNote').textContent='Biểu đồ phụ tải độc lập, không mô phỏng PV. Mỗi giá trị tại mốc giờ được giữ ổn định trong 30 phút tiếp theo; tại thời điểm thay đổi tải, đường biểu diễn chuyển thẳng đứng. Đây là phụ tải ước tính từ hóa đơn và lịch vận hành, không phải số đo công tơ.';
   $('loadPvChart').style.display='block';
  }catch(e){$('loadSizingStatus').textContent=e.message}
 }
