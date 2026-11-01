@@ -1574,7 +1574,8 @@ def folders(request:Request):
     # One-time compatibility migration: older projects created before folder
     # management have no folderId and were hidden by the folder-only dashboard.
     folders=[r for r in rows if (r.get("payload") or {}).get("_recordType")=="folder"]
-    legacy=[r for r in rows if (r.get("payload") or {}).get("_recordType")!="folder" and not (r.get("payload") or {}).get("folderId")]
+    folder_ids={r.get("id") for r in folders}
+    legacy=[r for r in rows if (r.get("payload") or {}).get("_recordType")!="folder" and (r.get("payload") or {}).get("folderId") not in folder_ids]
     if legacy:
         legacy_id="00000000-0000-4000-8000-000000000001"
         existing=next((r for r in folders if r.get("id")==legacy_id),None)
