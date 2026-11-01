@@ -1,5 +1,6 @@
 import os, json, uuid, secrets, hmac, mimetypes, asyncio, io, zipfile, re, xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import List
 from datetime import datetime, timezone
 from urllib.parse import quote
 import requests
@@ -85,7 +86,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <h3>⚡ Tính toán công suất dự kiến</h3>
 <p class='muted'>Tải hóa đơn điện PDF/ảnh hoặc nhập số liệu thủ công. Website tính điện năng ngày/đêm và đề xuất sơ bộ công suất PV, dung lượng pin lưu trữ.</p>
 <div class='grid'>
-<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện (PDF, JPG, PNG, WEBP)</label><div class='row'><input id='billFile' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' style='max-width:420px'><button class='btn alt' type='button' onclick='readBill()'>Đọc hóa đơn</button><span id='billReadStatus' class='muted'></span></div></div>
+<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện nhiều tháng / nhiều kỳ (PDF, JPG, PNG, WEBP — tối đa 50 file/lần)</label><div class='row'><input id='billFiles' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' multiple style='max-width:520px'><button class='btn alt' type='button' onclick='readBills()'>Đọc & tổng hợp hóa đơn</button><span id='billReadStatus' class='muted'></span></div><div class='muted'>Có thể chọn đồng thời hóa đơn VAT và bảng kê chi tiết. Website sẽ phát hiện cùng kỳ để tránh cộng trùng.</div></div><div class='field' style='grid-column:1/-1'><div id='billBatchSummary' class='muted'>Chưa có dữ liệu hóa đơn.</div><div style='overflow-x:auto;margin-top:8px'><table id='billBatchTable' style='width:100%;border-collapse:collapse;font-size:13px;display:none'><thead><tr><th>Tệp / kỳ hóa đơn</th><th>Loại điện</th><th>Cấp áp</th><th>Bình thường</th><th>Cao điểm</th><th>Thấp điểm</th><th>Tổng kWh</th><th>Tiền điện</th><th>Giá bình quân</th><th>Trạng thái</th></tr></thead><tbody id='billBatchRows'></tbody></table></div></div>
 <div class='field'><label>Tổng điện năng hóa đơn (kWh)</label><input id='billMonthKwh' type='number' min='0' step='.01' placeholder='Nhập hoặc kiểm tra số đọc được'></div>
 <div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
 <div class='field'><label>Tỷ lệ tiêu thụ ban ngày (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
@@ -204,20 +205,36 @@ function applyLoadSizing(){
   calc();$('loadSizingStatus').textContent='Đã áp dụng điện năng tháng, số lượng tấm PV dự kiến và dung lượng pin vào cấu hình. Hãy kiểm tra và lưu dự án.';
  }catch(e){$('loadSizingStatus').textContent=e.message}
 }
-async function readBill(){
- const f=$('billFile').files[0];if(!f){$('billReadStatus').textContent='Chọn hóa đơn PDF hoặc ảnh trước.';return}
- const fd=new FormData();fd.append('file',f);
+let billBatchResults=[];
+function billFmt(v){return v===null||v===undefined||v===''?'—':Number(v).toLocaleString('vi-VN',{maximumFractionDigits:2})}
+function billPeriodKey(x){return x.period_start&&x.period_end?x.period_start+'|'+x.period_end:null}
+function renderBillBatch(){
+ const rows=billBatchResults;const seen=new Map();
+ rows.forEach((x,i)=>{x._included=!!(x.monthly_kwh&&!x.error);x._duplicate=false;const k=billPeriodKey(x);if(!k||!x._included)return;if(seen.has(k)){const j=seen.get(k),a=rows[j],ad=Object.keys(a.tou_kwh||{}).length,bd=Object.keys(x.tou_kwh||{}).length;if(bd>ad){a._included=false;a._duplicate=true;seen.set(k,i)}else{x._included=false;x._duplicate=true}}else seen.set(k,i)});
+ const included=rows.filter(x=>x._included),sum=key=>included.reduce((a,x)=>a+(Number(x[key])||0),0);
+ const total=sum('monthly_kwh'),days=sum('period_days'),amount=sum('amount_vnd'),normal=included.reduce((a,x)=>a+(Number((x.tou_kwh||{}).normal)||0),0),peak=included.reduce((a,x)=>a+(Number((x.tou_kwh||{}).peak)||0),0),offpeak=included.reduce((a,x)=>a+(Number((x.tou_kwh||{}).offpeak)||0),0),hasTou=included.some(x=>Object.keys(x.tou_kwh||{}).length>0);
+ const types=[...new Set(included.map(x=>x.customer_type).filter(x=>x&&x!=='Chưa xác định'))],volts=[...new Set(included.map(x=>x.voltage).filter(Boolean))],avg=total>0&&amount>0?amount/total:null;
+ let summary=rows.length?'<b>Đã đọc '+rows.length+' file · '+included.length+' kỳ được tính · '+rows.filter(x=>x._duplicate).length+' file trùng kỳ được loại khỏi tổng.</b><br>Tổng điện năng: <b>'+billFmt(total)+' kWh</b> · Số ngày: <b>'+billFmt(days)+'</b> · Giá bình quân: <b>'+(avg?billFmt(avg)+' đ/kWh':'Chưa đủ dữ liệu tiền điện')+'</b><br>Loại điện: '+(types.join(', ')||'Chưa xác định')+' · Cấp điện áp: '+(volts.join(', ')||'Chưa xác định'):'Chưa có dữ liệu hóa đơn.';
+ summary+=hasTou?'<br>Khung giờ: Bình thường '+billFmt(normal)+' kWh · Cao điểm '+billFmt(peak)+' kWh · Thấp điểm '+billFmt(offpeak)+' kWh':'<br>Chưa có bảng kê đủ ba khung giờ để tổng hợp bình thường / cao điểm / thấp điểm.';
+ $('billBatchSummary').innerHTML=summary;$('billBatchTable').style.display=rows.length?'table':'none';
+ $('billBatchRows').innerHTML=rows.map(x=>'<tr style="border-top:1px solid #dce5e1"><td>'+esc(x.filename||'')+'<br><small>'+esc(x.period||'')+'</small></td><td>'+esc(x.customer_type||'Chưa rõ')+'</td><td>'+esc(x.voltage||'—')+'</td><td>'+billFmt((x.tou_kwh||{}).normal)+'</td><td>'+billFmt((x.tou_kwh||{}).peak)+'</td><td>'+billFmt((x.tou_kwh||{}).offpeak)+'</td><td>'+billFmt(x.monthly_kwh)+'</td><td>'+billFmt(x.amount_vnd)+'</td><td>'+(x.average_price_vnd_kwh?billFmt(x.average_price_vnd_kwh):'—')+'</td><td>'+(x._duplicate?'Trùng kỳ — không cộng':x.error?esc(x.error):x._included?'Được tính':'Không tính')+'</td></tr>').join('');
+ if(included.length){$('billMonthKwh').value=total.toFixed(2);$('billDays').value=days||30}
+}
+async function readBills(){
+ const files=[...$('billFiles').files];if(!files.length){$('billReadStatus').textContent='Chọn ít nhất một hóa đơn trước.';return}
+ if(files.length>50){$('billReadStatus').textContent='Mỗi lần tải tối đa 50 file.';return}
+ const fd=new FormData();files.forEach(f=>fd.append('files',f));
  try{
-  $('billReadStatus').textContent='Đang đọc hóa đơn...';
-  const res=await fetch('/api/bill/read',{method:'POST',body:fd});let d={};try{d=await res.json()}catch(_){}
+  $('billReadStatus').textContent='Đang đọc '+files.length+' hóa đơn...';
+  const res=await fetch('/api/bills/read',{method:'POST',body:fd});let d={};try{d=await res.json()}catch(_){}
   if(!res.ok)throw Error(d.detail||'Không đọc được hóa đơn');
-  if(d.monthly_kwh!==null&&d.monthly_kwh!==undefined)$('billMonthKwh').value=d.monthly_kwh;
-  if(d.period_days)$('billDays').value=d.period_days;
-  calcBillNightShare();$('billReadStatus').textContent=(d.ocr_used?'Đã OCR ảnh/PDF. ':'Đã đọc lớp văn bản PDF. ')+(d.monthly_kwh?'Nhận diện được '+d.monthly_kwh+' kWh. ':'Chưa chắc chắn sản lượng; vui lòng nhập bằng tay.')+(d.period_days?' Kỳ '+d.period+'.':'');
-  $('billReadStatus').title=d.raw_text||'';
-  $('loadSizingStatus').textContent='Dữ liệu nhận diện chỉ là gợi ý; hãy đối chiếu trực tiếp hóa đơn trước khi tính.';
+  billBatchResults=d.results||[];renderBillBatch();calcBillNightShare();
+  const ok=billBatchResults.filter(x=>x.monthly_kwh&&!x.error).length;
+  $('billReadStatus').textContent='Đã xử lý '+billBatchResults.length+' file, nhận diện được '+ok+' file có tổng kWh.';
+  $('loadSizingStatus').textContent='Kiểm tra các kỳ bị trùng và số liệu từng hóa đơn trước khi tính công suất.';
  }catch(e){$('billReadStatus').textContent=e.message}
 }
+
 $('billDayShare').addEventListener('input',()=>{calcBillNightShare();loadSizingResult=null});
 for(const id of ['billMonthKwh','billDays','billPsh','billDod'])$(id).addEventListener('input',()=>{loadSizingResult=null});
 
@@ -234,7 +251,7 @@ async function delFolder(id){if(!confirm('Xóa thư mục và toàn bộ dự á
 function esc(s){return String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 async function openP(id){let x=await api('/api/projects/'+id);pid=id;currentFolderId=x.payload.folderId||currentFolderId;fill(x.payload);$('folderView').style.display='none';$('dashboardView').style.display='none';$('editorView').style.display='block';$('currentFolderTitle').textContent='📁 '+currentFolderName;$('currentFolderDate').textContent=currentFolderDate;let files=await listFiles();gsaImages=files.filter(v=>String(v.name||'').startsWith('global-solar-atlas-')).sort((a,b)=>a.name.localeCompare(b.name)).map(v=>({id:v.id,name:v.name}));renderGSAImages()}
 async function delP(id){if(confirm('Xóa dự án?')){await api('/api/projects/'+id,{method:'DELETE'});if(pid===id)fresh();list()}}
-function fresh(){pid=null;loadSizingResult=null;$('billFile').value='';$('billMonthKwh').value='';$('billDays').value=30;$('billDayShare').value=65;calcBillNightShare();$('loadSizingResults').style.display='none';$('billReadStatus').textContent='';$('loadSizingStatus').textContent='Chưa tính toán.';financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='';ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('date').value=new Date().toISOString().slice(0,10);$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;pvwattsResult=null;globalSolarAtlasResult=null;gsaImages=[];renderGSAImages();calc()}
+function fresh(){pid=null;loadSizingResult=null;$('billFiles').value='';billBatchResults=[];$('billBatchSummary').textContent='Chưa có dữ liệu hóa đơn.';$('billBatchTable').style.display='none';$('billMonthKwh').value='';$('billDays').value=30;$('billDayShare').value=65;calcBillNightShare();$('loadSizingResults').style.display='none';$('billReadStatus').textContent='';$('loadSizingStatus').textContent='Chưa tính toán.';financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='';ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('date').value=new Date().toISOString().slice(0,10);$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;pvwattsResult=null;globalSolarAtlasResult=null;gsaImages=[];renderGSAImages();calc()}
 async function upload(){if(!pid){alert('Hãy lưu dự án trước');return}let fd=new FormData();for(let f of $('files').files)fd.append('files',f);let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});if(!r.ok){alert('Tải file lỗi');return}$('files').value='';listFiles()}
 async function uploadProjectImages(category){if(!pid){alert('Hãy lưu dự án trước khi tải ảnh.');return}let input=category==='roof-real'?$ ('roofRealImages'):$('roofPvImages');let files=[...input.files];if(!files.length){alert('Vui lòng chọn ảnh trước.');return}let fd=new FormData();for(let f of files)fd.append('files',f);fd.append('category',category);try{let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Tải ảnh không thành công');input.value='';await listFiles();$('status').textContent='Đã tải '+d.length+' ảnh lên dự án.'}catch(e){alert(e.message)}}
 async function renderProjectImageLists(items){let real=items.filter(x=>String(x.name||'').startsWith('roof-real__')),pv=items.filter(x=>String(x.name||'').startsWith('roof-pv__'));const render=(a)=>a.length?a.map(x=>'<div style="display:flex;align-items:center;gap:8px;margin:7px 0"><img src="/api/files/'+x.id+'" style="width:76px;height:54px;object-fit:cover;border-radius:6px;border:1px solid #dce5e1"><a href="/api/files/'+x.id+'" target="_blank">'+esc(x.name.replace(/^roof-(real|pv)__/,''))+'</a></div>').join(''):'Chưa có ảnh.';$('roofRealImageList').innerHTML=render(real);$('roofPvImageList').innerHTML=render(pv)}
