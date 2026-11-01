@@ -120,10 +120,10 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='grid' style='grid-template-columns:repeat(3,minmax(0,1fr));gap:10px'>
 <div class='field'><label>Số ngày hoạt động/tuần</label><select id='plantWorkDays'><option value='5'>5 ngày (Thứ Hai–Thứ Sáu)</option><option value='6' selected>6 ngày (Thứ Hai–Thứ Bảy)</option><option value='7'>7 ngày</option></select></div>
 <div class='field'><label>Giờ bắt đầu ca</label><input id='plantStart' type='time' value='08:00'></div>
-<div class='field'><label>Giờ kết thúc ca</label><input id='plantEnd' type='time' value='17:30'></div>
-<div class='field'><label>Bắt đầu nghỉ trưa</label><input id='plantLunchStart' type='time' value='11:30'></div>
+<div class='field'><label>Giờ kết thúc ca</label><input id='plantEnd' type='time' value='16:30'></div>
+<div class='field'><label>Bắt đầu nghỉ trưa</label><input id='plantLunchStart' type='time' value='11:00'></div>
 <div class='field'><label>Kết thúc nghỉ trưa</label><input id='plantLunchEnd' type='time' value='13:00'></div>
-<div class='field'><label>% máy dừng trong giờ nghỉ trưa</label><input id='plantLunchOff' type='number' min='0' max='100' placeholder='Nhập % máy dừng'></div>
+<div class='field'><label>% máy dừng trong giờ nghỉ trưa</label><input id='plantLunchOff' type='number' min='0' max='100' value='50'></div>
 <div class='field'><label>Mức phụ tải duy trì ngoài ca / ngày nghỉ (%)</label><input id='plantOutsideShare' type='number' min='0' max='100' placeholder='Nhập % tải nền'></div>
 </div>
 <p class='muted'>Tỷ lệ máy dừng 80% nghĩa là còn khoảng 20% mức tải vận hành trong giờ nghỉ trưa. Mức phụ tải duy trì ngoài ca 10% nghĩa là tải nền ngoài giờ sản xuất bằng 10% mức tải trong ca.</p>
