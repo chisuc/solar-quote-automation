@@ -460,24 +460,49 @@ def home(request:Request):
     return PAGE
 
 
+_bill_ocr_env_logged=False
+
 def _bill_ocr_image(image):
-    # EVN bill photos often contain large blank margins and charts. Keep OCR
-    # bounded so a free Render instance does not spend 25+ seconds per image.
+    global _bill_ocr_env_logged
+    # EVN bills are Vietnamese. Loading only the Vietnamese model avoids the
+    # extra English model and is materially faster on Render's free CPU.
     image=ImageOps.exif_transpose(image).convert("L")
     image.thumbnail((1400,1400),Image.Resampling.LANCZOS)
     image=ImageOps.autocontrast(image)
+    if not _bill_ocr_env_logged:
+        try:
+            langs=pytesseract.get_languages(config="")
+            version=str(pytesseract.get_tesseract_version())
+            print(f"Bill OCR engine: Tesseract {version}; languages={langs}",flush=True)
+            if "vie" not in langs:
+                raise RuntimeError("Thiếu bộ ngôn ngữ Tesseract tiếng Việt (vie).")
+            _bill_ocr_env_logged=True
+        except Exception as exc:
+            print(f"Bill OCR environment check failed: {type(exc).__name__}: {exc}",flush=True)
+            raise
     try:
+        # PSM 6 treats the bill as a uniform text block; PSM 11 was slower on
+        # these EVNSPC images and caused repeated timeouts on Render.
         return pytesseract.image_to_string(
-            image,lang="vie+eng",config="--oem 1 --psm 11",timeout=12
+            image,lang="vie",config="--oem 1 --psm 6",timeout=12
         )
     except RuntimeError as exc:
         if "timeout" not in str(exc).lower():
             raise
-        # One smaller/faster retry for unusually large or complex images.
-        image.thumbnail((950,950),Image.Resampling.LANCZOS)
-        return pytesseract.image_to_string(
-            image,lang="vie+eng",config="--oem 1 --psm 11",timeout=8
-        )
+        # Retry only the useful left-hand bill content (period, TOU table and
+        # payment summary), excluding the QR/contact column and chart area.
+        w,h=image.size
+        regions=[
+            image.crop((int(w*.05),int(h*.22),int(w*.66),int(h*.58))),
+            image.crop((int(w*.05),int(h*.72),int(w*.66),int(h*.99)))
+        ]
+        parts=[]
+        for region in regions:
+            region.thumbnail((1000,700),Image.Resampling.LANCZOS)
+            parts.append(pytesseract.image_to_string(
+                region,lang="vie",config="--oem 1 --psm 6",timeout=6
+            ))
+        return "\\n".join(parts)
 
 def _bill_read_document(data,ext):
     text=""; used_ocr=False
@@ -647,7 +672,10 @@ async def read_electricity_bill(request:Request,file:UploadFile=File(...)):
         text,used_ocr=await asyncio.to_thread(_bill_read_document,data,ext)
     except Exception as exc:
         print(f"Bill parsing error: {type(exc).__name__}: {exc}",flush=True)
-        raise HTTPException(422,"Không đọc được file hóa đơn. Bạn có thể nhập số liệu bằng tay.")
+        detail=("OCR quá thời gian xử lý. Vui lòng thử lại ảnh rõ hơn hoặc nhập số liệu bằng tay."
+                if isinstance(exc,RuntimeError) and "timeout" in str(exc).lower()
+                else "Không đọc được file hóa đơn. Bạn có thể nhập số liệu bằng tay.")
+        raise HTTPException(422,detail)
     if not text.strip():
         raise HTTPException(422,"Không nhận diện được nội dung hóa đơn. Vui lòng nhập số liệu bằng tay.")
     result=_bill_extract_values(text)
@@ -681,7 +709,10 @@ async def read_electricity_bills(request:Request,files:List[UploadFile]=File(...
             results.append(item)
         except Exception as exc:
             print(f"Batch bill parsing error {name}: {type(exc).__name__}: {exc}",flush=True)
-            results.append({"filename":name,"error":"Không đọc được file","monthly_kwh":None})
+            reason=("OCR quá thời gian xử lý; thử ảnh rõ hơn hoặc nhập tay"
+                    if isinstance(exc,RuntimeError) and "timeout" in str(exc).lower()
+                    else f"Lỗi OCR: {type(exc).__name__}")
+            results.append({"filename":name,"error":reason,"monthly_kwh":None})
     return {"count":len(results),"results":results}
 
 @app.post("/api/pvwatts")
