@@ -364,7 +364,50 @@ def _bill_extract_values(text):
             b=datetime.strptime(m.group(2).replace("-","/"),"%d/%m/%Y")
             period_days=max(1,(b-a).days+1)  # Billing periods include both start and end dates.
         except Exception: pass
-    return {"monthly_kwh":kwh,"period_days":period_days,"period":period,"tou_kwh":tou,"raw_text":"\n".join(lines)[:7000]}
+    # Billing metadata: classify only when the wording is explicit.
+    low=normalized.lower()
+    if any(x in low for x in ("sinh hoạt","điện sinh hoạt","bậc 1","bậc 2")):
+        customer_type="Sinh hoạt"
+    elif any(x in low for x in ("kinh doanh","mục đích kinh doanh")):
+        customer_type="Kinh doanh"
+    elif any(x in low for x in ("sản xuất","mục đích sản xuất")):
+        customer_type="Sản xuất"
+    elif any(x in low for x in ("hành chính sự nghiệp","cơ quan hành chính","đơn vị sự nghiệp")):
+        customer_type="Hành chính sự nghiệp"
+    else:
+        customer_type="Chưa xác định"
+    vm=re.search(r"(?:cấp điện áp|điện áp sử dụng|điện áp)\s*[:\-]?\s*(dưới\s*6\s*kv|từ\s*6\s*kv\s*đến\s*dưới\s*22\s*kv|từ\s*22\s*kv\s*đến\s*dưới\s*35\s*kv|từ\s*35\s*kv\s*đến\s*dưới\s*110\s*kv|110\s*kv\s*trở\s*lên|[\d.,]+\s*kv)",normalized,re.I)
+    voltage=vm.group(1) if vm else ""
+    amount=None
+    amount_patterns=[
+        r"(?:tổng cộng thanh toán|tổng tiền thanh toán|tổng thanh toán|số tiền thanh toán|cộng tiền thanh toán)[^\d]{0,50}([\d.,]+)\s*(?:đ|vnđ|vnd)?",
+        r"(?:tổng tiền điện|tiền điện sau thuế|tổng tiền)[^\d]{0,50}([\d.,]+)\s*(?:đ|vnđ|vnd)"
+    ]
+    for pat in amount_patterns:
+        mm=re.search(pat,normalized,re.I)
+        if mm:
+            amount=_bill_number(mm.group(1))
+            if amount and amount>0: break
+    start_iso=end_iso=""
+    dm=re.search(r"(?:từ ngày|từ)\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4}).{0,100}?(?:đến ngày|đến)\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4})",normalized,re.I)
+    if dm:
+        try:
+            da=datetime(int(dm.group(3)),int(dm.group(2)),int(dm.group(1)))
+            dbb=datetime(int(dm.group(6)),int(dm.group(5)),int(dm.group(4)))
+            start_iso=da.strftime("%Y-%m-%d"); end_iso=dbb.strftime("%Y-%m-%d")
+        except Exception: pass
+    if not start_iso:
+        dm=re.search(r"(?:kỳ|tháng)\s*(\d{1,2})\s*[/\-]\s*(\d{4})",normalized,re.I)
+        if dm:
+            try:
+                da=datetime(int(dm.group(2)),int(dm.group(1)),1)
+                start_iso=da.strftime("%Y-%m-%d")
+            except Exception: pass
+    tariff="Ba giá" if len(tou)==3 else ("Một giá / tổng hợp" if kwh is not None else "Chưa xác định")
+    return {"monthly_kwh":kwh,"period_days":period_days,"period":period,"period_start":start_iso,"period_end":end_iso,
+            "tou_kwh":tou,"customer_type":customer_type,"voltage":voltage,"amount_vnd":amount,
+            "average_price_vnd_kwh":(amount/kwh if amount and kwh else None),"tariff_type":tariff,
+            "raw_text":"\n".join(lines)[:7000]}
 @app.post("/api/bill/read")
 async def read_electricity_bill(request:Request,file:UploadFile=File(...)):
     auth(request)
@@ -398,6 +441,44 @@ async def read_electricity_bill(request:Request,file:UploadFile=File(...)):
     result["ocr_used"]=used_ocr
     result["message"]="Đã trích xuất văn bản; vui lòng kiểm tra và xác nhận sản lượng, số ngày trước khi tính toán."
     return result
+
+@app.post("/api/bills/read")
+async def read_electricity_bills(request:Request,files:List[UploadFile]=File(...)):
+    auth(request)
+    if not files: raise HTTPException(400,"Vui lòng chọn ít nhất một hóa đơn.")
+    if len(files)>50: raise HTTPException(400,"Mỗi lần tải tối đa 50 file.")
+    results=[]
+    for file in files:
+        name=Path(file.filename or "bill").name
+        ext=Path(name).suffix.lower()
+        if ext not in (".pdf",".png",".jpg",".jpeg",".webp"):
+            results.append({"filename":name,"error":"Định dạng không hỗ trợ","monthly_kwh":None}); continue
+        data=await file.read()
+        if not data or len(data)>20*1024*1024:
+            results.append({"filename":name,"error":"File trống hoặc vượt quá 20 MB","monthly_kwh":None}); continue
+        text=""; used_ocr=False
+        try:
+            if ext==".pdf":
+                reader=PdfReader(io.BytesIO(data))
+                text="\n".join((p.extract_text() or "") for p in reader.pages[:5])
+                if len(text.strip())<80:
+                    pages=convert_from_bytes(data,dpi=250,first_page=1,last_page=min(3,len(reader.pages)))
+                    text="\n".join(pytesseract.image_to_string(im,lang="vie+eng") for im in pages)
+                    used_ocr=True
+            else:
+                im=Image.open(io.BytesIO(data)).convert("RGB")
+                text=pytesseract.image_to_string(im,lang="vie+eng")
+                used_ocr=True
+            if not text.strip():
+                results.append({"filename":name,"error":"Không nhận diện được nội dung","monthly_kwh":None}); continue
+            item=_bill_extract_values(text)
+            item["filename"]=name; item["ocr_used"]=used_ocr
+            item["error"]=None if item.get("monthly_kwh") else "Chưa nhận diện được tổng kWh"
+            results.append(item)
+        except Exception as exc:
+            print(f"Batch bill parsing error {name}: {type(exc).__name__}: {exc}",flush=True)
+            results.append({"filename":name,"error":"Không đọc được file","monthly_kwh":None})
+    return {"count":len(results),"results":results}
 
 @app.post("/api/pvwatts")
 async def pvwatts(request:Request):
