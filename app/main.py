@@ -505,7 +505,7 @@ def _bill_ocr_image(image):
             )
         parts.append(part)
 
-    text="\\n".join(parts)
+    text="\n".join(parts)
     # Unknown layouts may not align with the EVNSPC blocks; retain a bounded
     # whole-page fallback only when the cropped text is clearly insufficient.
     if len(text.strip())<100:
@@ -556,7 +556,7 @@ def _bill_extract_values(text):
     row_patterns={
         "normal":r"Khung giờ bình thường\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
         "peak":r"Khung giờ cao điểm\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
-        "offpeak":r"Khung giờ thấp điểm\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)"
+        "offpeak":r"Khung giờ th[ấắa]p điểm\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
     }
     for key,pat in row_patterns.items():
         m=re.search(pat,normalized,re.I)
