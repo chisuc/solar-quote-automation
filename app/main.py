@@ -464,11 +464,11 @@ _bill_ocr_env_logged=False
 
 def _bill_ocr_image(image):
     global _bill_ocr_env_logged
-    # EVN bills are Vietnamese. Loading only the Vietnamese model avoids the
-    # extra English model and is materially faster on Render's free CPU.
+    # EVNSPC bill layout: OCR only the useful left-side blocks. The table
+    # crop is enlarged so small kWh digits remain legible, while charts/QR
+    # codes and the contact column are excluded.
     image=ImageOps.exif_transpose(image).convert("L")
-    image.thumbnail((1400,1400),Image.Resampling.LANCZOS)
-    image=ImageOps.autocontrast(image)
+    w,h=image.size
     if not _bill_ocr_env_logged:
         try:
             langs=pytesseract.get_languages(config="")
@@ -480,29 +480,40 @@ def _bill_ocr_image(image):
         except Exception as exc:
             print(f"Bill OCR environment check failed: {type(exc).__name__}: {exc}",flush=True)
             raise
-    try:
-        # PSM 6 treats the bill as a uniform text block; PSM 11 was slower on
-        # these EVNSPC images and caused repeated timeouts on Render.
-        return pytesseract.image_to_string(
-            image,lang="vie",config="--oem 1 --psm 6",timeout=12
+
+    boxes=[
+        (0.05,0.02,0.66,0.36),  # customer type, voltage and billing period
+        (0.07,0.26,0.57,0.57), # three time-of-use rows and total kWh
+        (0.07,0.70,0.60,0.99)  # electricity charges and total payment
+    ]
+    parts=[]
+    for index,(x1,y1,x2,y2) in enumerate(boxes):
+        crop=image.crop((int(w*x1),int(h*y1),int(w*x2),int(h*y2)))
+        crop=crop.resize((crop.width*2,crop.height*2),Image.Resampling.LANCZOS)
+        crop=ImageOps.autocontrast(crop)
+        try:
+            part=pytesseract.image_to_string(
+                crop,lang="vie",config="--oem 1 --psm 6",timeout=7
+            )
+        except RuntimeError as exc:
+            if "timeout" not in str(exc).lower():
+                raise
+            # A smaller retry is limited to this crop, never the whole page.
+            crop.thumbnail((850,650),Image.Resampling.LANCZOS)
+            part=pytesseract.image_to_string(
+                crop,lang="vie",config="--oem 1 --psm 6",timeout=5
+            )
+        parts.append(part)
+
+    text="\\n".join(parts)
+    # Unknown layouts may not align with the EVNSPC blocks; retain a bounded
+    # whole-page fallback only when the cropped text is clearly insufficient.
+    if len(text.strip())<100:
+        image.thumbnail((1100,1100),Image.Resampling.LANCZOS)
+        text=pytesseract.image_to_string(
+            image,lang="vie",config="--oem 1 --psm 6",timeout=8
         )
-    except RuntimeError as exc:
-        if "timeout" not in str(exc).lower():
-            raise
-        # Retry only the useful left-hand bill content (period, TOU table and
-        # payment summary), excluding the QR/contact column and chart area.
-        w,h=image.size
-        regions=[
-            image.crop((int(w*.05),int(h*.22),int(w*.66),int(h*.58))),
-            image.crop((int(w*.05),int(h*.72),int(w*.66),int(h*.99)))
-        ]
-        parts=[]
-        for region in regions:
-            region.thumbnail((1000,700),Image.Resampling.LANCZOS)
-            parts.append(pytesseract.image_to_string(
-                region,lang="vie",config="--oem 1 --psm 6",timeout=6
-            ))
-        return "\n".join(parts)
+    return text
 
 def _bill_read_document(data,ext):
     text=""; used_ocr=False
@@ -553,6 +564,18 @@ def _bill_extract_values(text):
             value=_bill_number(m.group(1))
             if value is not None: tou[key]=value
     kwh=sum(tou.values()) if len(tou)==3 else None
+    # If OCR misses the word "thấp" but reads the total and the other two
+    # TOU rows, derive off-peak as the balancing quantity.
+    total_hint=None
+    if kwh is None:
+        tm_total=re.search(r"T[oô]ng\\s*:\\s*([\\d.,]+)",normalized,re.I)
+        if tm_total:
+            total_hint=_bill_number(tm_total.group(1))
+        if total_hint and "normal" in tou and "peak" in tou and "offpeak" not in tou:
+            inferred=total_hint-tou["normal"]-tou["peak"]
+            if inferred>=0:
+                tou["offpeak"]=inferred
+                kwh=total_hint
     if kwh is None:
         # EVN VAT invoice form: one line item "Điện tiêu thụ kỳ ...", unit kWh,
         # quantity in the quantity column, then unit price and amount.
