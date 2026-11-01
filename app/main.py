@@ -549,33 +549,39 @@ def _bill_number(raw):
 def _bill_extract_values(text):
     normalized=re.sub(r"\s+"," ",text or "").strip()
     lines=[re.sub(r"\s+"," ",x).strip() for x in (text or "").splitlines() if x.strip()]
-    # EVNSPC detailed statements place the three time-of-use readings in separate rows.
-    # Prefer summing their final "Điện tiêu thụ (kWh)" values, which avoids confusing
-    # meter indexes, unit prices, and currency amounts with the energy total.
+    # Read each OCR line independently. Flattening the whole page can make
+    # a regex jump from a TOU label into the unrelated payment table below.
+    import unicodedata
+    def _bill_plain(value):
+        return "".join(ch for ch in unicodedata.normalize("NFD",value or "")
+                       if unicodedata.category(ch)!="Mn").replace("đ","d").replace("Đ","D").lower()
     tou={}
-    row_patterns={
-        "normal":r"Khung giờ bình thường\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
-        "peak":r"Khung giờ cao điểm\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
-        "offpeak":r"Khung giờ th[ấắa]p điểm\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
-    }
-    for key,pat in row_patterns.items():
-        m=re.search(pat,normalized,re.I)
-        if m:
-            value=_bill_number(m.group(1))
-            if value is not None: tou[key]=value
-    kwh=sum(tou.values()) if len(tou)==3 else None
-    # If OCR misses the word "thấp" but reads the total and the other two
-    # TOU rows, derive off-peak as the balancing quantity.
+    for line in lines:
+        plain_line=_bill_plain(line)
+        key=None
+        if "khung gio binh thuong" in plain_line: key="normal"
+        elif "khung gio cao diem" in plain_line: key="peak"
+        elif "khung gio thap diem" in plain_line: key="offpeak"
+        if key and key not in tou:
+            values=re.findall(r"\\d[\\d.,]*",line)
+            if values:
+                value=_bill_number(values[-1])
+                if value is not None: tou[key]=value
     total_hint=None
-    if kwh is None:
-        tm_total=re.search(r"T[oô]ng\s*:\s*([\d.,]+)",normalized,re.I)
+    for line in lines:
+        plain_line=_bill_plain(line)
+        tm_total=re.search(r"tong\\s*:\\s*([\\d.,]+)",plain_line,re.I)
         if tm_total:
             total_hint=_bill_number(tm_total.group(1))
-        if total_hint and "normal" in tou and "peak" in tou and "offpeak" not in tou:
-            inferred=total_hint-tou["normal"]-tou["peak"]
-            if inferred>=0:
-                tou["offpeak"]=inferred
-                kwh=total_hint
+            break
+    kwh=sum(tou.values()) if len(tou)==3 else None
+    if kwh is None and total_hint and "normal" in tou and "peak" in tou and "offpeak" not in tou:
+        inferred=total_hint-tou["normal"]-tou["peak"]
+        if inferred>=0:
+            tou["offpeak"]=inferred
+            kwh=total_hint
+    if kwh is None and total_hint:
+        kwh=total_hint
     if kwh is None:
         # EVN VAT invoice form: one line item "Điện tiêu thụ kỳ ...", unit kWh,
         # quantity in the quantity column, then unit price and amount.
