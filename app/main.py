@@ -412,7 +412,7 @@ def _bill_extract_values(text):
     voltage=vm.group(1) if vm else ""
     amount=None
     amount_patterns=[
-        r"(?:tổng cộng thanh toán|tổng tiền thanh toán|tổng thanh toán|số tiền thanh toán|cộng tiền thanh toán)[^\d]{0,50}([\d.,]+)\s*(?:đ|vnđ|vnd)?",
+        r"(?:tổng cộng tiền thanh toán|tổng cộng thanh toán|tổng tiền thanh toán|tổng thanh toán|số tiền thanh toán|cộng tiền thanh toán)[^\d]{0,50}([\d.,]+)\s*(?:đ|vnđ|vnd)?",
         r"(?:tổng tiền điện|tiền điện sau thuế|tổng tiền)[^\d]{0,50}([\d.,]+)\s*(?:đ|vnđ|vnd)"
     ]
     for pat in amount_patterns:
@@ -445,7 +445,7 @@ def _bill_extract_values(text):
             money=_bill_number(tm.group(4))
             if qty is not None:
                 tiers["bac_"+tm.group(1)]={"kwh":qty,"unit_price":rate,"amount_vnd":money}
-    tariff="Ba giá" if len(tou)==3 else ("Theo bậc thang" if tiers else ("Một giá / tổng hợp" if kwh is not None else "Chưa xác định"))
+    tariff="Ba giá" if len(tou)==3 else ("Bậc thang" if customer_type=="Sinh hoạt" else ("Theo bậc thang" if tiers else ("Một giá / tổng hợp" if kwh is not None else "Chưa xác định")) )
     return {"monthly_kwh":kwh,"period_days":period_days,"period":period,"period_start":start_iso,"period_end":end_iso,
             "tou_kwh":tou,"tiers":tiers,"customer_type":customer_type,"voltage":voltage,"amount_vnd":amount,
             "average_price_vnd_kwh":(amount/kwh if amount and kwh else None),"tariff_type":tariff,
