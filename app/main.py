@@ -123,8 +123,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Giờ kết thúc ca</label><input id='plantEnd' type='time' value='17:30'></div>
 <div class='field'><label>Bắt đầu nghỉ trưa</label><input id='plantLunchStart' type='time' value='11:30'></div>
 <div class='field'><label>Kết thúc nghỉ trưa</label><input id='plantLunchEnd' type='time' value='13:00'></div>
-<div class='field'><label>% máy dừng trong giờ nghỉ trưa</label><input id='plantLunchOff' type='number' min='0' max='100' value='80'></div>
-<div class='field'><label>Mức phụ tải duy trì ngoài ca / ngày nghỉ (%)</label><input id='plantOutsideShare' type='number' min='0' max='100' value='10'></div>
+<div class='field'><label>% máy dừng trong giờ nghỉ trưa</label><input id='plantLunchOff' type='number' min='0' max='100' placeholder='Nhập % máy dừng'></div>
+<div class='field'><label>Mức phụ tải duy trì ngoài ca / ngày nghỉ (%)</label><input id='plantOutsideShare' type='number' min='0' max='100' placeholder='Nhập % tải nền'></div>
 </div>
 <p class='muted'>Tỷ lệ máy dừng 80% nghĩa là còn khoảng 20% mức tải vận hành trong giờ nghỉ trưa. Mức phụ tải duy trì ngoài ca 10% nghĩa là tải nền ngoài giờ sản xuất bằng 10% mức tải trong ca.</p>
 <p class='muted'>Có thể chỉnh sửa lại 23 điểm phụ tải sau khi tự tạo, hoặc nhập thủ công nếu có số đo thực tế.</p>
@@ -243,10 +243,10 @@ function buildLoadProfileFromTou(){
   if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Hóa đơn thiếu ngày bắt đầu/kết thúc kỳ.');
   if(rows.some(x=>!x.tou_kwh||!['normal','peak','offpeak'].every(k=>Number.isFinite(Number(x.tou_kwh[k])))))throw Error('Hóa đơn cần có đủ kWh bình thường, cao điểm và thấp điểm.');
   const startMin=toMinutes($('plantStart').value),endMin=toMinutes($('plantEnd').value),lunchStart=toMinutes($('plantLunchStart').value),lunchEnd=toMinutes($('plantLunchEnd').value);
-  const workDays=Number($('plantWorkDays').value),lunchOff=Number($('plantLunchOff').value)/100,outsideShare=Number($('plantOutsideShare').value)/100;
+  const workDays=Number($('plantWorkDays').value),lunchRaw=$('plantLunchOff').value.trim(),outsideRaw=$('plantOutsideShare').value.trim(),lunchOff=Number(lunchRaw)/100,outsideShare=Number(outsideRaw)/100;
   if(!(startMin>=0&&endMin>startMin&&endMin<=1440))throw Error('Giờ bắt đầu/kết thúc ca không hợp lệ.');
   if(!(lunchStart>=startMin&&lunchEnd>lunchStart&&lunchEnd<=endMin))throw Error('Giờ nghỉ trưa phải nằm trong ca làm việc.');
-  if(!Number.isFinite(lunchOff)||lunchOff<0||lunchOff>1||!Number.isFinite(outsideShare)||outsideShare<0||outsideShare>1)throw Error('Các tỷ lệ phải nằm trong khoảng 0–100%.');
+  if(lunchRaw===''||outsideRaw===''||!Number.isFinite(lunchOff)||lunchOff<0||lunchOff>1||!Number.isFinite(outsideShare)||outsideShare<0||outsideShare>1)throw Error('Vui lòng nhập % máy dừng trong giờ nghỉ trưa và % tải nền ngoài ca (0–100%).');
   let totalDays=0,normalKwh=0,peakKwh=0,offKwh=0;const dates=[];
   const parseDate=v=>{const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):null};
   rows.forEach(row=>{const st=parseDate(row.period_start),en=parseDate(row.period_end);if(!st||!en||en<st)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));for(let d=new Date(st);d<=en;d.setUTCDate(d.getUTCDate()+1)){dates.push(new Date(d));totalDays++}normalKwh+=Number(row.tou_kwh.normal)||0;peakKwh+=Number(row.tou_kwh.peak)||0;offKwh+=Number(row.tou_kwh.offpeak)||0});
