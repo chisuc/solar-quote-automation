@@ -362,7 +362,7 @@ function renderBillBatch(){
  else if(groupKeys.length>1){$('billMonthKwh').value='';$('billDays').value=30;loadSizingResult=null;$('billReadStatus').textContent='Có nhiều nhóm loại điện/cấp áp. Chọn đúng nhóm trước khi tính sizing.'}
 }
 
-async async function readBills(){
+async function readBills(){
  const files=[...$('billFiles').files];
  if(!files.length){$('billReadStatus').textContent='Chọn ít nhất một hóa đơn trước.';return}
  if(files.length>50){$('billReadStatus').textContent='Mỗi lần tải tối đa 50 file.';return}
