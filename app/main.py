@@ -484,7 +484,7 @@ def _bill_ocr_image(image):
     boxes=[
         (0.05,0.02,0.66,0.36),  # customer type, voltage and billing period
         (0.07,0.26,0.57,0.57), # three time-of-use rows and total kWh
-        (0.07,0.70,0.60,0.99)  # electricity charges and total payment
+        (0.04,0.65,0.65,0.999) # electricity charges and total payment
     ]
     parts=[]
     for index,(x1,y1,x2,y2) in enumerate(boxes):
@@ -650,6 +650,17 @@ def _bill_extract_values(text):
         if mm:
             amount=_bill_number(mm.group(1))
             if amount and amount>0: break
+    if not amount:
+        # OCR may confuse Vietnamese accents in "Tổng cộng"; normalize accents
+        # and match the payment label without depending on exact diacritics.
+        import unicodedata
+        plain="".join(ch for ch in unicodedata.normalize("NFD",normalized)
+                      if unicodedata.category(ch)!="Mn").replace("đ","d").replace("Đ","D")
+        mm=re.search(r"(?:tong cong tien thanh toan|tong tien thanh toan|so tien thanh toan)[^\\d]{0,60}([\\d.,]+)",plain,re.I)
+        if mm:
+            amount=_bill_number(mm.group(1))
+            if amount is not None and amount<=1000000 and amount>0:
+                amount=None
     start_iso=end_iso=""
     dm=re.search(r"(?:từ ngày|từ)\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4}).{0,100}?(?:đến ngày|đến)\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4})",normalized,re.I)
     if dm:
