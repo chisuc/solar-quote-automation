@@ -83,7 +83,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <section id="editorView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolder()">← Quay lại thư mục</button><div><b id="currentFolderTitle">Thư mục dự án</b><div class="muted" id="currentFolderDate"></div></div></div>
 <h1>Trung tâm báo giá điện mặt trời</h1><p class='muted'>Website MVP · Dữ liệu lưu trên máy chủ</p>
 <div class='panel' id='loadSizingPanel' style='border:2px solid #cfe3d8'>
-<h3>⚡ Tính toán công suất dự kiến</h3>
+<div class='row' style='justify-content:space-between;align-items:center;gap:12px'><div><h3 style='margin:0'>⚡ Phân tích hóa đơn điện & phụ tải</h3><p class='muted' style='margin:5px 0 0'>Đọc hóa đơn EVN, tính giá điện và ước tính biểu đồ phụ tải nhà máy.</p></div><button class='btn alt' id='loadSizingToggle' type='button' onclick='toggleLoadSizing()' aria-expanded='false'>＋ Mở phần tính toán</button></div>
+<div id='loadSizingContent' style='display:none;margin-top:14px'>
 <p class='muted'>Chỉ cần tải hóa đơn EVN và khai báo lịch vận hành. Website tự ước tính phụ tải 30 phút từ sản lượng theo khung giờ; không cần xuất dữ liệu từ công tơ.</p>
 <div class='grid'>
 <div class='field' style='grid-column:1/-1'><label>Hóa đơn điện nhiều tháng / nhiều kỳ (PDF, JPG, PNG, WEBP — tối đa 50 file/lần)</label><div class='row'><input id='billFiles' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' multiple style='max-width:520px'><button class='btn alt' type='button' onclick='readBills()'>Đọc & tổng hợp hóa đơn</button><span id='billReadStatus' class='muted'></span></div><div class='muted'>Có thể chọn đồng thời hóa đơn VAT và bảng kê chi tiết. Website sẽ phát hiện cùng kỳ để tránh cộng trùng.</div></div><div class='field' style='grid-column:1/-1'><div id='billBatchSummary' class='muted'>Chưa có dữ liệu hóa đơn.</div><div id='billGroupSummary' style='margin-top:12px'></div><div id='billMonthlySummary' style='margin-top:12px'></div><div class='field' style='margin-top:12px'><label>Nhóm hóa đơn dùng để tính sizing PV / pin</label><select id='billGroupSelect' onchange='applyBillGroup()' style='width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:8px'><option value=''>Chọn nhóm hóa đơn</option></select><small class='muted'>Chỉ cộng các hóa đơn cùng loại điện, cấp điện áp và hình thức giá; không trộn sinh hoạt với sản xuất/kinh doanh.</small></div><div style='overflow-x:auto;margin-top:8px'><table id='billBatchTable' style='width:100%;border-collapse:collapse;font-size:13px;display:none'><thead><tr><th>Tệp / kỳ hóa đơn</th><th>Loại điện</th><th>Hình thức giá</th><th>Sản lượng bậc</th><th>Cấp áp</th><th>Bình thường</th><th>Cao điểm</th><th>Thấp điểm</th><th>Tổng kWh</th><th>Sản lượng TB (kWh/ngày)</th><th>Tiền điện</th><th>Giá điện TB (đ/kWh)</th><th>Trạng thái</th></tr></thead><tbody id='billBatchRows'></tbody></table></div></div>
@@ -135,6 +136,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#16845b'>━ Phụ tải nhà máy (kW)</span></div>
 <div id='loadPvMetrics' class='grid' style='margin-top:12px'></div>
 <p class='muted' id='loadPvNote' style='margin:10px 0 0'></p>
+</div>
 </div>
 </div>
 </div></div>
@@ -279,6 +281,13 @@ function buildLoadProfileFromTou(){
   $('loadSizingStatus').textContent='Đã tự dựng phụ tải 30 phút từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Lịch '+workDays+' ngày/tuần; ca '+$('plantStart').value+'–'+$('plantEnd').value+'; nghỉ '+$('plantLunchStart').value+'–'+$('plantLunchEnd').value+'; dừng '+$('plantLunchOff').value+'% máy; tải nền ngoài ca/ngày nghỉ '+$('plantOutsideShare').value+'%. Điện 06:00–17:00 ước tính theo ngày trung bình tuần: '+energy0617.toFixed(1)+' kWh. Đây là mô hình ước tính từ hóa đơn, không phải số đo công tơ.';
   drawLoadPvComparison();
  }catch(e){$('loadSizingStatus').textContent=e.message}
+}
+function toggleLoadSizing(){
+ const content=$('loadSizingContent'),button=$('loadSizingToggle');
+ const opening=content.style.display==='none';
+ content.style.display=opening?'block':'none';
+ button.textContent=opening?'− Thu gọn phần tính toán':'＋ Mở phần tính toán';
+ button.setAttribute('aria-expanded',opening?'true':'false');
 }
 function initLoadProfileInputs(){
  const box=$('loadProfileInputs');if(!box)return;
