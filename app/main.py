@@ -108,6 +108,18 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='gsa-card'><div class='muted'>Điện năng cần pin cấp ban đêm</div><h2 id='resNightSupply' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
 </div>
 <p class='muted' id='loadSizingAssumptions' style='margin-top:10px'></p>
+<div style='border-top:1px solid #e2eae5;margin-top:16px;padding-top:14px'>
+<h3 style='margin:0 0 6px'>Đường phụ tải & so sánh công suất PV (06:00–17:00)</h3>
+<p class='muted'>Nhập công suất phụ tải trung bình tại từng mốc 30 phút (kW). Có 23 mốc, bao gồm 06:00 và 17:00.</p>
+<div class='row'><button class='btn alt' type='button' onclick='fillFlatLoadProfile()'>Phân bổ đều theo điện ban ngày</button><button class='btn alt' type='button' onclick='clearLoadProfile()'>Xóa dữ liệu nhập</button><button class='btn' type='button' onclick='drawLoadPvComparison()'>Vẽ / cập nhật biểu đồ</button></div>
+<div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
+<div id='loadPvChart' style='display:none;margin-top:16px;border:1px solid #e2eae5;border-radius:9px;padding:10px'>
+<div id='loadPvChartSvg'></div>
+<div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#16845b'>━ Phụ tải nhà máy</span><span style='color:#e58b22'>━ Công suất PV ước tính</span></div>
+<div id='loadPvMetrics' class='grid' style='margin-top:12px'></div>
+<p class='muted' id='loadPvNote' style='margin:10px 0 0'></p>
+</div>
+</div>
 </div></div>
 <div class='panel'><h3>Khách hàng & công trình</h3><div class='grid'><div class='field'><label>Tên dự án</label><input id='projectName'></div><div class='field'><label>Khách hàng / công ty</label><input id='customer'></div><div class='field'><label>Người liên hệ</label><input id='contact'></div><div class='field'><label>Số điện thoại</label><input id='phone'></div><div class='field'><label>Địa điểm công trình</label><input id='address'></div><div class='field'><label>Ngày báo giá</label><input id='date' type='date'></div><div class='field'><label>Ngày hiệu lực báo giá (để trống = +7 ngày)</label><input id='quoteValidUntil' type='date'></div><div class='field'><label>Ngành nghề</label><input id='industry' placeholder='Ví dụ: Sản xuất bao bì'></div><div class='field'><label>Diện tích mái (m²)</label><input id='roof' type='number'></div><div class='field'><label>Bức xạ (kWh/m²/năm)</label><input id='solarRadiation' type='number' step='.1'></div><div class='field'><label>Kết cấu mái</label><input id='roofType' placeholder='Ví dụ: Kèo thép, xà gồ C'></div><div class='field'><label>Điều kiện mái</label><input id='roofCondition' placeholder='Ví dụ: Mái mới, không dột'></div><div class='field'><label>Thói quen dùng điện</label><textarea id='usagePattern' rows='2' style='width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:7px' placeholder='Ví dụ: Hoạt động 2 ca, từ 7h đến 22h; nghỉ Chủ nhật...'></textarea></div></div></div>
 <div class='panel'><h3>Cấu hình hệ thống</h3><div class='grid'><div class='field'><label>Thương hiệu tấm pin</label><input id='panelBrand'></div><div class='field'><label>Công suất tấm pin (Wp)</label><input id='panelW' type='number' value='625'></div><div class='field'><label>Số lượng tấm</label><input id='panelQty' type='number' value='30'></div><div class='field'><label>Công suất PV (kWp)</label><input id='pv' readonly></div><div class='field'><label>Inverter / Model</label><input id='invModel'></div><div class='field'><label>Công suất inverter (kW)</label><input id='invKw' type='number'></div><div class='field'><label>Số pha</label><select id='phase'><option>1 pha</option><option>3 pha</option></select></div><div class='field'><label>Pin lưu trữ / Model</label><input id='batModel'></div><div class='field'><label>Dung lượng mỗi bộ (kWh)</label><input id='batKwh' type='number' step='.01'></div><div class='field'><label>Số lượng bộ pin</label><input id='batQty' type='number' value='0'></div><div class='field'><label>Tổng dung lượng pin (kWh)</label><input id='batTotal' readonly></div></div></div>
@@ -196,6 +208,43 @@ function calculateLoadSizing(){
   $('loadSizingResults').style.display='block';$('loadSizingStatus').textContent='Đã tính toán. Kiểm tra lại dữ liệu hóa đơn và các giả định trước khi áp dụng.';return loadSizingResult;
  }catch(e){$('loadSizingStatus').textContent=e.message;loadSizingResult=null;return null}
 }
+const loadProfileTimes=Array.from({length:23},(_,i)=>{const mins=360+i*30;return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0')});
+function initLoadProfileInputs(){
+ const box=$('loadProfileInputs');if(!box)return;
+ box.innerHTML=loadProfileTimes.map((t,i)=>'<label style="font-size:11px;font-weight:600">'+t+'<input id="loadProfile'+i+'" type="number" min="0" step="0.1" value="" placeholder="kW" style="margin-top:4px;padding:8px"></label>').join('');
+}
+function clearLoadProfile(){loadProfileTimes.forEach((_,i)=>$('loadProfile'+i).value='');$('loadPvChart').style.display='none'}
+function fillFlatLoadProfile(){
+ const r=loadSizingResult||calculateLoadSizing();if(!r)return;
+ const flat=r.dayKwh/11;
+ loadProfileTimes.forEach((_,i)=>$('loadProfile'+i).value=flat.toFixed(1));
+ drawLoadPvComparison();
+}
+function drawLoadPvComparison(){
+ try{
+  const load=loadProfileTimes.map((t,i)=>{const raw=$('loadProfile'+i).value.trim();if(raw==='')throw Error('Vui lòng nhập đủ phụ tải tại 23 mốc 30 phút.');const v=Number(raw);if(!Number.isFinite(v)||v<0)throw Error('Phụ tải phải là số không âm tại mốc '+t+'.');return v});
+  const r=loadSizingResult||calculateLoadSizing();if(!r)return;
+  const pvKwp=n('panelW')*n('panelQty')/1000||r.pvKwp,psh=n('billPsh')||4,pr=.8;
+  if(pvKwp<=0)throw Error('Chưa có công suất PV. Hãy nhập số lượng và công suất tấm pin hoặc tính sizing trước.');
+  const raw=loadProfileTimes.map((_,i)=>Math.sin(Math.PI*i/22));
+  const rawEnergy=raw.slice(0,-1).reduce((a,v,i)=>a+(v+raw[i+1])*.25,0);
+  const pvScale=rawEnergy>0?pvKwp*psh*pr/rawEnergy:0;
+  const pv=raw.map(v=>v*pvScale);
+  let loadKwh=0,pvKwh=0,selfKwh=0,deficit=0,surplus=0;
+  for(let i=0;i<22;i++){const l=(load[i]+load[i+1])*.25,p=(pv[i]+pv[i+1])*.25;loadKwh+=l;pvKwh+=p;selfKwh+=Math.min(l,p);deficit+=Math.max(l-p,0);surplus+=Math.max(p-l,0)}
+  const W=900,H=340,L=58,R=18,T=24,B=42,pw=W-L-R,ph=H-T-B,max=Math.max(1,...load,...pv)*1.12;
+  const x=i=>L+pw*i/22,y=v=>T+ph*(1-v/max);
+  let grid='',labels='';
+  for(let k=0;k<=4;k++){const val=max*k/4,yy=y(val);grid+='<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="#e4ece8"/><text x="'+(L-9)+'" y="'+(yy+4)+'" text-anchor="end" fill="#687a73" font-size="11">'+val.toFixed(0)+'</text>'}
+  loadProfileTimes.forEach((t,i)=>{if(i%2===0||i===22)labels+='<text x="'+x(i)+'" y="'+(H-13)+'" text-anchor="middle" fill="#52665d" font-size="11">'+t+'</text>'});
+  const line=arr=>arr.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
+  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ phụ tải và công suất PV từ 6 giờ đến 17 giờ">'+grid+'<path d="'+line(load)+'" fill="none" stroke="#16845b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="'+line(pv)+'" fill="none" stroke="#e58b22" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
+  const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div><h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div></div>';
+  $('loadPvMetrics').innerHTML=card('Điện năng phụ tải 06–17',loadKwh,'kWh')+card('Điện PV ước tính 06–17',pvKwh,'kWh')+card('PV tự tiêu thụ trực tiếp',selfKwh,'kWh')+card('Điện thiếu từ lưới',deficit,'kWh')+card('Điện PV dư',surplus,'kWh')+card('Tỷ lệ PV tự dùng',pvKwh>0?selfKwh/pvKwh*100:0,'% sản lượng PV');
+  $('loadPvNote').textContent='PV được mô phỏng theo đường cong sin từ 06:00 đến 17:00, chuẩn hóa theo công suất PV '+pvKwp.toFixed(2)+' kWp, PSH '+psh.toFixed(1)+' giờ/ngày và PR 80%. Đây là đường cong giả định để so sánh sơ bộ, chưa thay thế dữ liệu PVWatts theo giờ hoặc đo bức xạ thực tế.';
+  $('loadPvChart').style.display='block';
+ }catch(e){$('loadSizingStatus').textContent=e.message}
+}
 function applyLoadSizing(){
  try{
   const r=loadSizingResult||calculateLoadSizing();
@@ -268,7 +317,7 @@ async function delFolder(id){if(!confirm('Xóa thư mục và toàn bộ dự á
 function esc(s){return String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 async function openP(id){let x=await api('/api/projects/'+id);pid=id;currentFolderId=x.payload.folderId||currentFolderId;fill(x.payload);$('folderView').style.display='none';$('dashboardView').style.display='none';$('editorView').style.display='block';$('currentFolderTitle').textContent='📁 '+currentFolderName;$('currentFolderDate').textContent=currentFolderDate;let files=await listFiles();gsaImages=files.filter(v=>String(v.name||'').startsWith('global-solar-atlas-')).sort((a,b)=>a.name.localeCompare(b.name)).map(v=>({id:v.id,name:v.name}));renderGSAImages()}
 async function delP(id){if(confirm('Xóa dự án?')){await api('/api/projects/'+id,{method:'DELETE'});if(pid===id)fresh();list()}}
-function fresh(){pid=null;loadSizingResult=null;$('billFiles').value='';billBatchResults=[];$('billBatchSummary').textContent='Chưa có dữ liệu hóa đơn.';$('billGroupSummary').innerHTML='';$('billMonthlySummary').innerHTML='';$('billGroupSelect').innerHTML='<option value="">Chọn nhóm hóa đơn</option>';$('billBatchTable').style.display='none';$('billMonthKwh').value='';$('billDays').value=30;$('billDayShare').value=65;calcBillNightShare();$('loadSizingResults').style.display='none';$('billReadStatus').textContent='';$('loadSizingStatus').textContent='Chưa tính toán.';financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='';ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('date').value=new Date().toISOString().slice(0,10);$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;pvwattsResult=null;globalSolarAtlasResult=null;gsaImages=[];renderGSAImages();calc()}
+function fresh(){pid=null;loadSizingResult=null;clearLoadProfile();$('billFiles').value='';billBatchResults=[];$('billBatchSummary').textContent='Chưa có dữ liệu hóa đơn.';$('billGroupSummary').innerHTML='';$('billMonthlySummary').innerHTML='';$('billGroupSelect').innerHTML='<option value="">Chọn nhóm hóa đơn</option>';$('billBatchTable').style.display='none';$('billMonthKwh').value='';$('billDays').value=30;$('billDayShare').value=65;calcBillNightShare();$('loadSizingResults').style.display='none';$('billReadStatus').textContent='';$('loadSizingStatus').textContent='Chưa tính toán.';financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='';ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('date').value=new Date().toISOString().slice(0,10);$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;pvwattsResult=null;globalSolarAtlasResult=null;gsaImages=[];renderGSAImages();calc()}
 async function upload(){if(!pid){alert('Hãy lưu dự án trước');return}let fd=new FormData();for(let f of $('files').files)fd.append('files',f);let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});if(!r.ok){alert('Tải file lỗi');return}$('files').value='';listFiles()}
 async function uploadProjectImages(category){if(!pid){alert('Hãy lưu dự án trước khi tải ảnh.');return}let input=category==='roof-real'?$ ('roofRealImages'):$('roofPvImages');let files=[...input.files];if(!files.length){alert('Vui lòng chọn ảnh trước.');return}let fd=new FormData();for(let f of files)fd.append('files',f);fd.append('category',category);try{let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Tải ảnh không thành công');input.value='';await listFiles();$('status').textContent='Đã tải '+d.length+' ảnh lên dự án.'}catch(e){alert(e.message)}}
 async function renderProjectImageLists(items){let real=items.filter(x=>String(x.name||'').startsWith('roof-real__')),pv=items.filter(x=>String(x.name||'').startsWith('roof-pv__'));const render=(a)=>a.length?a.map(x=>'<div style="display:flex;align-items:center;gap:8px;margin:7px 0"><img src="/api/files/'+x.id+'" style="width:76px;height:54px;object-fit:cover;border-radius:6px;border:1px solid #dce5e1"><a href="/api/files/'+x.id+'" target="_blank">'+esc(x.name.replace(/^roof-(real|pv)__/,''))+'</a></div>').join(''):'Chưa có ảnh.';$('roofRealImageList').innerHTML=render(real);$('roofPvImageList').innerHTML=render(pv)}
@@ -276,7 +325,7 @@ async function renderProjectImageLists(items){let real=items.filter(x=>String(x.
 async function listFiles(){if(!pid)return;let a=await api('/api/projects/'+pid+'/files');let ordinary=a.filter(x=>!String(x.name||'').startsWith('roof-real__')&&!String(x.name||'').startsWith('roof-pv__'));$('fileList').innerHTML=ordinary.map(x=>`<div><a href='/api/files/${x.id}'>${esc(x.name)}</a></div>`).join('')||'Chưa có file';renderProjectImageLists(a);return a}
 function exportJson(){let b=new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='du-an.json';a.click()}
 async function logout(){await fetch('/logout',{method:'POST'});location='/login-page'}
-$('date').value=new Date().toISOString().slice(0,10);$('newFolderDate').value=new Date().toISOString().slice(0,10);calc();renderFolders().catch(e=>$('folderStatus').textContent=e.message);
+initLoadProfileInputs();$('date').value=new Date().toISOString().slice(0,10);$('newFolderDate').value=new Date().toISOString().slice(0,10);calc();renderFolders().catch(e=>$('folderStatus').textContent=e.message);
 </script></main></body></html>"""
 
 @app.get("/health")
