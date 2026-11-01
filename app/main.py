@@ -661,16 +661,17 @@ def _bill_extract_values(text):
             amount=_bill_number(mm.group(1))
             if amount and amount>0: break
     if not amount:
-        # OCR may confuse Vietnamese accents in "Tổng cộng"; normalize accents
-        # and match the payment label without depending on exact diacritics.
-        import unicodedata
-        plain="".join(ch for ch in unicodedata.normalize("NFD",normalized)
-                      if unicodedata.category(ch)!="Mn").replace("đ","d").replace("Đ","D")
-        mm=re.search(r"(?:tong cong tien thanh toan|tong tien thanh toan|so tien thanh toan)[^\d]{0,60}([\d.,]+)",plain,re.I)
-        if mm:
-            amount=_bill_number(mm.group(1))
-            if amount is not None and amount<=1000000 and amount>0:
-                amount=None
+        # Search the explicit payment-total line, not the nearby "Tổng số tiền"
+        # heading, which can otherwise cause OCR to capture a tariff-table number.
+        for line in lines:
+            plain_line=_bill_plain(line)
+            if "tong cong tien thanh toan" in plain_line or "tong tien thanh toan" in plain_line:
+                values=re.findall(r"\d[\d.,]*",line)
+                if values:
+                    candidate=_bill_number(values[-1])
+                    if candidate and candidate>1000000:
+                        amount=candidate
+                        break
     start_iso=end_iso=""
     dm=re.search(r"(?:từ ngày|từ)\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4}).{0,100}?(?:đến ngày|đến)\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4})",normalized,re.I)
     if dm:
