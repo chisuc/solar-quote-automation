@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.middleware.sessions import SessionMiddleware
 from openpyxl import load_workbook
 from pypdf import PdfReader
-from PIL import Image
+from PIL import Image, ImageOps
 import pytesseract
 from pdf2image import convert_from_bytes
 
@@ -87,7 +87,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div id='loadSizingContent' style='display:none;margin-top:14px'>
 <p class='muted'>Chỉ cần tải hóa đơn EVN và khai báo lịch vận hành. Website tự ước tính phụ tải 30 phút từ sản lượng theo khung giờ; không cần xuất dữ liệu từ công tơ.</p>
 <div class='grid'>
-<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện nhiều tháng / nhiều kỳ (PDF, JPG, PNG, WEBP — tối đa 50 file/lần)</label><div class='row'><input id='billFiles' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' multiple style='max-width:520px'><button class='btn alt' type='button' onclick='readBills()'>Đọc & tổng hợp hóa đơn</button><span id='billReadStatus' class='muted'></span><div id='billReadProgress' style='width:100%;margin-top:8px' aria-live='polite'></div></div><div class='muted'>Có thể chọn đồng thời hóa đơn VAT và bảng kê chi tiết. Website sẽ phát hiện cùng kỳ để tránh cộng trùng.</div></div><div class='field' style='grid-column:1/-1'><div id='billBatchSummary' class='muted'>Chưa có dữ liệu hóa đơn.</div><div id='billGroupSummary' style='margin-top:12px'></div><div id='billMonthlySummary' style='margin-top:12px'></div><div class='field' style='margin-top:12px'><label>Nhóm hóa đơn dùng để tính sizing PV / pin</label><select id='billGroupSelect' onchange='applyBillGroup()' style='width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:8px'><option value=''>Chọn nhóm hóa đơn</option></select><small class='muted'>Chỉ cộng các hóa đơn cùng loại điện, cấp điện áp và hình thức giá; không trộn sinh hoạt với sản xuất/kinh doanh.</small></div><div style='overflow-x:auto;margin-top:8px'><table id='billBatchTable' style='width:100%;border-collapse:collapse;font-size:13px;display:none'><thead><tr><th>Tệp / kỳ hóa đơn</th><th>Loại điện</th><th>Hình thức giá</th><th>Sản lượng bậc</th><th>Cấp áp</th><th>Bình thường</th><th>Cao điểm</th><th>Thấp điểm</th><th>Tổng kWh</th><th>Sản lượng TB (kWh/ngày)</th><th>Tiền điện</th><th>Giá điện TB (đ/kWh)</th><th>Trạng thái</th></tr></thead><tbody id='billBatchRows'></tbody></table></div></div>
+<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện nhiều tháng / nhiều kỳ (PDF, JPG, PNG, WEBP — tối đa 50 file/lần)</label><div class='row'><input id='billFiles' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' multiple style='max-width:520px'><button class='btn alt' type='button' onclick='readBills()'>Đọc & tổng hợp hóa đơn</button><span id='billReadStatus' class='muted'></span><div id='billReadProgress' style='width:100%;margin-top:8px' aria-live='polite'></div></div><div class='muted'>Có thể chọn đồng thời hóa đơn VAT và bảng kê chi tiết. Website sẽ phát hiện cùng kỳ để tránh cộng trùng.</div></div><div class='field' style='grid-column:1/-1'><div id='billBatchSummary' class='muted'>Chưa có dữ liệu hóa đơn.</div><div id='billGroupSummary' style='margin-top:12px'></div><div class='field' style='margin-top:12px'><label>Nhóm hóa đơn dùng để tính sizing PV / pin</label><select id='billGroupSelect' onchange='applyBillGroup()' style='width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:8px'><option value=''>Chọn nhóm hóa đơn</option></select><small class='muted'>Chỉ cộng các hóa đơn cùng loại điện, cấp điện áp và hình thức giá; không trộn sinh hoạt với sản xuất/kinh doanh.</small></div><div style='overflow-x:auto;margin-top:8px'><table id='billBatchTable' style='width:100%;border-collapse:collapse;font-size:13px;display:none'><thead><tr><th>Tệp / kỳ hóa đơn</th><th>Loại điện</th><th>Hình thức giá</th><th>Sản lượng bậc</th><th>Cấp áp</th><th>Bình thường</th><th>Cao điểm</th><th>Thấp điểm</th><th>Tổng kWh</th><th>Sản lượng TB (kWh/ngày)</th><th>Tiền điện</th><th>Giá điện TB (đ/kWh)</th><th>Trạng thái</th></tr></thead><tbody id='billBatchRows'></tbody></table></div></div>
 <div class='field'><label>Tổng điện năng hóa đơn (kWh)</label><input id='billMonthKwh' type='number' min='0' step='.01' placeholder='Nhập hoặc kiểm tra số đọc được'></div>
 <div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
 <div class='field'><label>Sản lượng trung bình (kWh/ngày)</label><input id='billDailyAverage' type='number' readonly placeholder='Tự tính từ tổng kWh / số ngày'></div>
@@ -354,8 +354,7 @@ function renderBillBatch(){
  if(!included.length)summary+='<br>Chưa có hóa đơn nào đủ dữ liệu để tổng hợp.';
  $('billBatchSummary').innerHTML=summary;
  $('billGroupSummary').innerHTML=groupKeys.map(k=>{const arr=groups[k],kwh=sum(arr,'monthly_kwh'),money=sum(arr,'amount_vnd'),avg=kwh&&money?money/kwh:null,hasTou=arr.some(x=>Object.keys(x.tou_kwh||{}).length===3),normal=sum(arr.map(x=>({v:(x.tou_kwh||{}).normal})),'v'),peak=sum(arr.map(x=>({v:(x.tou_kwh||{}).peak})),'v'),off=sum(arr.map(x=>({v:(x.tou_kwh||{}).offpeak})),'v');return '<div style="padding:10px;margin:8px 0;border:1px solid #dce5e1;border-radius:8px"><b>'+esc(k)+'</b><br>'+arr.length+' hóa đơn · '+billFmt(kwh)+' kWh · Giá bình quân '+(avg?billFmt(avg)+' đ/kWh':'chưa đủ dữ liệu tiền điện')+'<br><small>'+(hasTou?'Bình thường '+billFmt(normal)+' · Cao điểm '+billFmt(peak)+' · Thấp điểm '+billFmt(off)+' kWh':'Chưa có đủ dữ liệu ba khung giờ')+'</small></div>'}).join('');
- const monthly={};included.forEach(x=>{const group=billGroupKey(x),month=(x.period_start||'').slice(0,7)||'Không rõ tháng',key=group+'||'+month;if(!monthly[key])monthly[key]={group,month,kwh:0,days:0,amount:0,normal:0,peak:0,offpeak:0};const m=monthly[key];m.kwh+=Number(x.monthly_kwh)||0;m.days+=Number(x.period_days)||0;m.amount+=Number(x.amount_vnd)||0;m.normal+=Number((x.tou_kwh||{}).normal)||0;m.peak+=Number((x.tou_kwh||{}).peak)||0;m.offpeak+=Number((x.tou_kwh||{}).offpeak)||0});
- $('billMonthlySummary').innerHTML=Object.values(monthly).sort((a,b)=>a.month.localeCompare(b.month)||a.group.localeCompare(b.group)).map(m=>{const p=m.kwh&&m.amount?m.amount/m.kwh:null;return '<div style="padding:8px 0;border-bottom:1px solid #e2eae5"><b>'+esc(m.month)+'</b> · '+esc(m.group)+'<br>'+billFmt(m.kwh)+' kWh · '+billFmt(m.days)+' ngày · Sản lượng TB '+(m.days?billFmt(m.kwh/m.days)+' kWh/ngày':'—')+' · Giá điện TB '+(p?billFmt(p)+' đ/kWh':'chưa đủ dữ liệu')+'<br><small>Bình thường '+billFmt(m.normal)+' · Cao điểm '+billFmt(m.peak)+' · Thấp điểm '+billFmt(m.offpeak)+' kWh</small></div>'}).join('');
+ $('billMonthlySummary').innerHTML='';
  $('billBatchTable').style.display=rows.length?'table':'none';
  $('billBatchRows').innerHTML=rows.map(x=>'<tr style="border-top:1px solid #dce5e1"><td>'+esc(x.filename||'')+'<br><small>'+esc(x.period||'')+'</small></td><td>'+esc(x.customer_type||'Chưa rõ')+'</td><td>'+esc(x.tariff_type||'—')+'</td><td>'+esc(Object.entries(x.tiers||{}).map(([k,v])=>k.replace('bac_','Bậc ')+' '+billFmt(v.kwh)+' kWh').join('; ')||'—')+'</td><td>'+esc(x.voltage||'—')+'</td><td>'+billFmt((x.tou_kwh||{}).normal)+'</td><td>'+billFmt((x.tou_kwh||{}).peak)+'</td><td>'+billFmt((x.tou_kwh||{}).offpeak)+'</td><td>'+billFmt(x.monthly_kwh)+'</td><td>'+(x.period_days?billFmt(x.monthly_kwh/x.period_days):'—')+'</td><td>'+billFmt(x.amount_vnd)+'</td><td>'+(x.average_price_vnd_kwh?billFmt(x.average_price_vnd_kwh):'—')+'</td><td>'+(x._duplicate?'Trùng kỳ — không cộng':x.error?esc(x.error):x._included?'Được tính':'Không tính')+'</td></tr>').join('');
  if(groupKeys.length===1){$('billGroupSelect').value=groupKeys[0];applyBillGroup()}
@@ -461,6 +460,30 @@ def home(request:Request):
     if request.session.get("user")!=USER: return RedirectResponse("/login-page",status_code=303)
     return PAGE
 
+
+def _bill_ocr_image(image):
+    # Normalize phone photos before OCR: correct EXIF orientation, grayscale,
+    # contrast enhancement and bounded resolution reduce Tesseract work.
+    image=ImageOps.exif_transpose(image).convert("L")
+    image.thumbnail((2000,2000),Image.Resampling.LANCZOS)
+    image=ImageOps.autocontrast(image)
+    return pytesseract.image_to_string(image,lang="vie+eng",config="--oem 1 --psm 6",timeout=25)
+
+def _bill_read_document(data,ext):
+    text=""; used_ocr=False
+    if ext==".pdf":
+        reader=PdfReader(io.BytesIO(data))
+        text="\n".join((p.extract_text() or "") for p in reader.pages[:5])
+        if len(text.strip())<80:
+            page_count=min(2,len(reader.pages))
+            pages=convert_from_bytes(data,dpi=180,first_page=1,last_page=page_count)
+            text="\n".join(_bill_ocr_image(page) for page in pages)
+            used_ocr=True
+    else:
+        with Image.open(io.BytesIO(data)) as source:
+            text=_bill_ocr_image(source)
+        used_ocr=True
+    return text,used_ocr
 
 def _bill_number(raw):
     raw=(raw or "").strip().replace(" ","")
@@ -611,17 +634,7 @@ async def read_electricity_bill(request:Request,file:UploadFile=File(...)):
         raise HTTPException(413,"File hóa đơn trống hoặc vượt quá 20 MB.")
     text=""; used_ocr=False
     try:
-        if ext==".pdf":
-            reader=PdfReader(io.BytesIO(data))
-            text="\n".join((p.extract_text() or "") for p in reader.pages[:5])
-            if len(text.strip())<80:
-                pages=convert_from_bytes(data,dpi=250,first_page=1,last_page=min(3,len(reader.pages)))
-                text="\n".join(pytesseract.image_to_string(im,lang="vie+eng") for im in pages)
-                used_ocr=True
-        else:
-            im=Image.open(io.BytesIO(data)).convert("RGB")
-            text=pytesseract.image_to_string(im,lang="vie+eng")
-            used_ocr=True
+        text,used_ocr=await asyncio.to_thread(_bill_read_document,data,ext)
     except Exception as exc:
         print(f"Bill parsing error: {type(exc).__name__}: {exc}",flush=True)
         raise HTTPException(422,"Không đọc được file hóa đơn. Bạn có thể nhập số liệu bằng tay.")
@@ -649,17 +662,7 @@ async def read_electricity_bills(request:Request,files:List[UploadFile]=File(...
             results.append({"filename":name,"error":"File trống hoặc vượt quá 20 MB","monthly_kwh":None}); continue
         text=""; used_ocr=False
         try:
-            if ext==".pdf":
-                reader=PdfReader(io.BytesIO(data))
-                text="\n".join((p.extract_text() or "") for p in reader.pages[:5])
-                if len(text.strip())<80:
-                    pages=convert_from_bytes(data,dpi=250,first_page=1,last_page=min(3,len(reader.pages)))
-                    text="\n".join(pytesseract.image_to_string(im,lang="vie+eng") for im in pages)
-                    used_ocr=True
-            else:
-                im=Image.open(io.BytesIO(data)).convert("RGB")
-                text=pytesseract.image_to_string(im,lang="vie+eng")
-                used_ocr=True
+            text,used_ocr=await asyncio.to_thread(_bill_read_document,data,ext)
             if not text.strip():
                 results.append({"filename":name,"error":"Không nhận diện được nội dung","monthly_kwh":None}); continue
             item=_bill_extract_values(text)
