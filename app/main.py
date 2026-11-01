@@ -297,42 +297,60 @@ def _bill_number(raw):
     except ValueError: return None
 
 def _bill_extract_values(text):
+    normalized=re.sub(r"\s+"," ",text or "").strip()
     lines=[re.sub(r"\s+"," ",x).strip() for x in (text or "").splitlines() if x.strip()]
-    kwh=None
-    patterns=[
-        r"(?:điện năng tiêu thụ|sản lượng điện tiêu thụ|tổng điện năng|điện năng sử dụng|điện tiêu thụ|tổng sản lượng)[^\d]{0,45}([\d.,]+)\s*kwh",
-        r"([\d.,]+)\s*kwh[^\n]{0,50}(?:điện năng tiêu thụ|sản lượng|tiêu thụ)"
-    ]
-    for line in lines:
-        low=line.lower()
-        if any(x in low for x in ("đơn giá","thành tiền","chỉ số công tơ","điện năng phản kháng")): continue
-        for pat in patterns:
-            m=re.search(pat,line,re.I)
-            if m:
-                val=_bill_number(m.group(1))
-                if val and val>0:
-                    kwh=val; break
-        if kwh is not None: break
-    # Common EVN bill layouts show a standalone total before the kWh unit.
+    # EVNSPC detailed statements place the three time-of-use readings in separate rows.
+    # Prefer summing their final "Điện tiêu thụ (kWh)" values, which avoids confusing
+    # meter indexes, unit prices, and currency amounts with the energy total.
+    tou={}
+    row_patterns={
+        "normal":r"Khung giờ bình thường\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
+        "peak":r"Khung giờ cao điểm\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
+        "offpeak":r"Khung giờ thấp điểm\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+([\d.,]+)"
+    }
+    for key,pat in row_patterns.items():
+        m=re.search(pat,normalized,re.I)
+        if m:
+            value=_bill_number(m.group(1))
+            if value is not None: tou[key]=value
+    kwh=sum(tou.values()) if len(tou)==3 else None
     if kwh is None:
+        # Common EVNSPC total row: "Tổng: 19.247" following the consumption table.
+        m=re.search(r"Tổng\s*:\s*([\d.,]+)",normalized,re.I)
+        if m:
+            value=_bill_number(m.group(1))
+            if value and value>0: kwh=value
+    if kwh is None:
+        # Alternate EVN layouts print the total after the explicit energy-total heading.
+        m=re.search(r"Tổng điện năng tiêu thụ\s*\(kWh\)\s*([\d.,]+)",normalized,re.I)
+        if m:
+            value=_bill_number(m.group(1))
+            if value and value>0: kwh=value
+    if kwh is None:
+        patterns=[
+            r"(?:điện năng tiêu thụ|sản lượng điện tiêu thụ|tổng điện năng|điện năng sử dụng|điện tiêu thụ|tổng sản lượng)[^\d]{0,60}([\d.,]+)\s*kwh",
+            r"([\d.,]+)\s*kwh[^\n]{0,60}(?:điện năng tiêu thụ|sản lượng|tiêu thụ)"
+        ]
         for line in lines:
             low=line.lower()
-            if "kwh" in low and any(x in low for x in ("tổng","cộng","tiêu thụ","sản lượng")):
-                m=re.search(r"([\d.,]+)\s*kwh",line,re.I)
+            if any(x in low for x in ("đơn giá","thành tiền","chỉ số công tơ","điện năng phản kháng")): continue
+            for pat in patterns:
+                m=re.search(pat,line,re.I)
                 if m:
-                    val=_bill_number(m.group(1))
-                    if val and val>0: kwh=val; break
+                    value=_bill_number(m.group(1))
+                    if value and value>0:
+                        kwh=value; break
+            if kwh is not None: break
     period_days=None; period=""
-    m=re.search(r"(?:từ ngày|từ)\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4}).{0,50}?(?:đến ngày|đến)\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",text or "",re.I|re.S)
+    m=re.search(r"(?:từ ngày|từ)\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4}).{0,80}?(?:đến ngày|đến)\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",normalized,re.I)
     if m:
         period=m.group(1)+" đến "+m.group(2)
         try:
             a=datetime.strptime(m.group(1).replace("-","/"),"%d/%m/%Y")
             b=datetime.strptime(m.group(2).replace("-","/"),"%d/%m/%Y")
-            period_days=max(1,(b-a).days)
+            period_days=max(1,(b-a).days+1)  # Billing periods include both start and end dates.
         except Exception: pass
-    return {"monthly_kwh":kwh,"period_days":period_days,"period":period,"raw_text":"\n".join(lines)[:7000]}
-
+    return {"monthly_kwh":kwh,"period_days":period_days,"period":period,"tou_kwh":tou,"raw_text":"\n".join(lines)[:7000]}
 @app.post("/api/bill/read")
 async def read_electricity_bill(request:Request,file:UploadFile=File(...)):
     auth(request)
