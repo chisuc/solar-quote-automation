@@ -116,6 +116,17 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field' style='align-self:end'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo đường phụ tải từ kWh hóa đơn</button></div>
 </div>
 <div class='muted' id='touScheduleDescription' style='margin:6px 0 12px'></div>
+<h4 style='margin:12px 0 8px'>Lịch vận hành nhà máy</h4>
+<div class='grid' style='grid-template-columns:repeat(3,minmax(0,1fr));gap:10px'>
+<div class='field'><label>Số ngày hoạt động/tuần</label><select id='plantWorkDays'><option value='5'>5 ngày (Thứ Hai–Thứ Sáu)</option><option value='6' selected>6 ngày (Thứ Hai–Thứ Bảy)</option><option value='7'>7 ngày</option></select></div>
+<div class='field'><label>Giờ bắt đầu ca</label><input id='plantStart' type='time' value='08:00'></div>
+<div class='field'><label>Giờ kết thúc ca</label><input id='plantEnd' type='time' value='17:30'></div>
+<div class='field'><label>Bắt đầu nghỉ trưa</label><input id='plantLunchStart' type='time' value='11:30'></div>
+<div class='field'><label>Kết thúc nghỉ trưa</label><input id='plantLunchEnd' type='time' value='13:00'></div>
+<div class='field'><label>% máy dừng trong giờ nghỉ trưa</label><input id='plantLunchOff' type='number' min='0' max='100' value='80'></div>
+<div class='field'><label>Điện tiêu thụ ngoài ca / ngày nghỉ (%)</label><input id='plantOutsideShare' type='number' min='0' max='100' value='10'></div>
+</div>
+<p class='muted'>Tỷ lệ máy dừng 80% nghĩa là còn khoảng 20% mức tải vận hành trong giờ nghỉ trưa. Điện ngoài ca/ngày nghỉ là phần ước tính trong tổng kWh hóa đơn nhưng không thuộc ca sản xuất đã khai báo.</p>
 <p class='muted'>Có thể chỉnh sửa lại 23 điểm phụ tải sau khi tự tạo, hoặc nhập thủ công nếu có số đo thực tế.</p>
 <div class='row'><button class='btn alt' type='button' onclick='fillFlatLoadProfile()'>Phân bổ đều theo điện ban ngày</button><button class='btn alt' type='button' onclick='clearLoadProfile()'>Xóa dữ liệu nhập</button><button class='btn' type='button' onclick='drawLoadPvComparison()'>Vẽ / cập nhật biểu đồ</button></div>
 <div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
@@ -151,7 +162,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='panel'><h3>Hình ảnh phục vụ báo giá PowerPoint</h3><p class='muted'>Tải riêng ảnh hiện trạng mái và ảnh bố trí tấm PV. Ảnh được lưu theo đúng dự án đang mở.</p><div class='grid'><div class='field'><label>1. Hình ảnh mái thực tế</label><input id='roofRealImages' type='file' accept='image/jpeg,image/png,image/webp' multiple><div class='row'><button class='btn' type='button' onclick="uploadProjectImages('roof-real')">Tải ảnh mái thực tế</button></div><div id='roofRealImageList' class='muted'>Chưa có ảnh.</div></div><div class='field'><label>2. Hình ảnh mái bố trí PV</label><input id='roofPvImages' type='file' accept='image/jpeg,image/png,image/webp' multiple><div class='row'><button class='btn' type='button' onclick="uploadProjectImages('roof-pv')">Tải ảnh bố trí PV</button></div><div id='roofPvImageList' class='muted'>Chưa có ảnh.</div></div></div></div><div class='panel'><h3>Hồ sơ đầu vào</h3><input id='files' type='file' multiple><div class='row'><button class='btn' onclick='upload()'>Tải file lên máy chủ</button></div><div id='fileList' class='muted'></div></div>
 <div class='panel'><h3>Dự án đã lưu</h3><div class='row'><button class='btn' onclick='save()'>Lưu dự án</button><button class='btn alt' onclick='fresh()'>Dự án mới</button><button class='btn alt' onclick='exportJson()'>Xuất JSON</button></div><div id='projects'>Đang tải...</div><div id='status' class='muted'></div></div></section></main>
 <script>
-let pid=null,pvwattsResult=null,gsaImages=[],financialReportId=null,currentFolderId=null,currentFolderName='',currentFolderDate='';const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','customer','contact','phone','address','date','quoteValidUntil','industry','solarRadiation','roofCondition','usagePattern','roof','roofType','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
+let pid=null,pvwattsResult=null,gsaImages=[],financialReportId=null,currentFolderId=null,currentFolderName='',currentFolderDate='';const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','customer','contact','phone','address','date','quoteValidUntil','industry','solarRadiation','roofCondition','usagePattern','roof','roofType','plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
 function calc(){let kw=n('panelW')*n('panelQty')/1000,v=n('pre')*n('vat')/100;$('pv').value=kw.toFixed(3);$('batTotal').value=(n('batKwh')*n('batQty')).toFixed(2);$('vatMoney').value=v.toFixed(0);$('grand').value=(n('pre')+v).toFixed(0)}
 document.addEventListener('input',e=>{if(e.target.tagName==='INPUT')calc()});
 let financialOverrides={};
@@ -221,46 +232,48 @@ function updateTouScheduleDescription(){
  ?'Khung giờ cũ: Cao điểm Thứ Hai–Thứ Bảy 17:30–22:30; bình thường 06:00–17:30 và 22:30–24:00 (Chủ nhật 06:00–24:00); thấp điểm tất cả các ngày 00:00–06:00.'
  :'Khung giờ mới: Cao điểm Thứ Hai–Thứ Bảy 09:30–11:30 và 17:00–20:00; bình thường 04:00–09:30, 11:30–17:00 và 20:00–22:00 (Chủ nhật 04:00–22:00); thấp điểm tất cả các ngày 22:00–04:00 hôm sau.';
 }
+function toMinutes(v){if(!v||!v.includes(':'))return NaN;const p=v.split(':').map(Number);return p[0]*60+p[1]}
 function buildLoadProfileFromTou(){
  try{
   const group=$('billGroupSelect').value;
-  if(!group)throw Error('Hãy chọn nhóm hóa đơn điện kinh doanh 3 pha trước.');
+  if(!group)throw Error('Hãy chọn nhóm hóa đơn trước.');
   const rows=billBatchResults.filter(x=>x._included&&billGroupKey(x)===group);
   if(!rows.length)throw Error('Nhóm hóa đơn đã chọn không có dữ liệu.');
-  if(!rows.every(x=>(x.customer_type||'').toLowerCase().includes('kinh doanh')))throw Error('Chức năng này thiết kế cho nhóm hóa đơn điện kinh doanh. Hãy chọn nhóm Kinh doanh; hóa đơn không tự xác nhận được số pha nếu không ghi rõ.');
-  if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Một số hóa đơn thiếu ngày bắt đầu/kết thúc kỳ. Cần đủ ngày kỳ hóa đơn để đếm số ngày Chủ nhật.');
-  if(rows.some(x=>!x.tou_kwh||!Number.isFinite(Number(x.tou_kwh.normal))||!Number.isFinite(Number(x.tou_kwh.peak))||!Number.isFinite(Number(x.tou_kwh.offpeak))))throw Error('Hóa đơn cần có đủ kWh giờ bình thường, cao điểm và thấp điểm.');
-  let weekdays=0,sundays=0,normalKwh=0,peakKwh=0,offKwh=0,totalDays=0;
-  const parseDate=v=>{const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return null;return new Date(Date.UTC(+m[1],+m[2]-1,+m[3]))};
-  rows.forEach(row=>{
-   const start=parseDate(row.period_start),end=parseDate(row.period_end);
-   if(!start||!end||end<start)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));
-   for(let d=new Date(start);d<=end;d.setUTCDate(d.getUTCDate()+1)){if(d.getUTCDay()===0)sundays++;else weekdays++;totalDays++}
-   normalKwh+=Number(row.tou_kwh.normal)||0;peakKwh+=Number(row.tou_kwh.peak)||0;offKwh+=Number(row.tou_kwh.offpeak)||0;
-  });
+  if(!rows.every(x=>(x.customer_type||'').toLowerCase().includes('kinh doanh')))throw Error('Chức năng này thiết kế cho nhóm hóa đơn điện kinh doanh.');
+  if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Hóa đơn thiếu ngày bắt đầu/kết thúc kỳ.');
+  if(rows.some(x=>!x.tou_kwh||!['normal','peak','offpeak'].every(k=>Number.isFinite(Number(x.tou_kwh[k])))))throw Error('Hóa đơn cần có đủ kWh bình thường, cao điểm và thấp điểm.');
+  const startMin=toMinutes($('plantStart').value),endMin=toMinutes($('plantEnd').value),lunchStart=toMinutes($('plantLunchStart').value),lunchEnd=toMinutes($('plantLunchEnd').value);
+  const workDays=Number($('plantWorkDays').value),lunchOff=Number($('plantLunchOff').value)/100,outsideShare=Number($('plantOutsideShare').value)/100;
+  if(!(startMin>=0&&endMin>startMin&&endMin<=1440))throw Error('Giờ bắt đầu/kết thúc ca không hợp lệ.');
+  if(!(lunchStart>=startMin&&lunchEnd>lunchStart&&lunchEnd<=endMin))throw Error('Giờ nghỉ trưa phải nằm trong ca làm việc.');
+  if(!Number.isFinite(lunchOff)||lunchOff<0||lunchOff>1||!Number.isFinite(outsideShare)||outsideShare<0||outsideShare>1)throw Error('Các tỷ lệ phải nằm trong khoảng 0–100%.');
+  let totalDays=0,normalKwh=0,peakKwh=0,offKwh=0;const dates=[];
+  const parseDate=v=>{const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):null};
+  rows.forEach(row=>{const st=parseDate(row.period_start),en=parseDate(row.period_end);if(!st||!en||en<st)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));for(let d=new Date(st);d<=en;d.setUTCDate(d.getUTCDate()+1)){dates.push(new Date(d));totalDays++}normalKwh+=Number(row.tou_kwh.normal)||0;peakKwh+=Number(row.tou_kwh.peak)||0;offKwh+=Number(row.tou_kwh.offpeak)||0});
   const mode=$('touScheduleMode').value;
-  const normalHours=weekdays*13+sundays*18,peakHours=weekdays*5,offHours=totalDays*6;
-  if(normalHours<=0||peakHours<=0)throw Error('Không đủ ngày làm việc để phân bổ điện năng giờ cao điểm. Kiểm tra kỳ hóa đơn.');
-  const normalKw=normalKwh/normalHours,peakKw=peakHours>0?peakKwh/peakHours:0,offKw=offHours>0?offKwh/offHours:0;
-  const sundayShare=sundays/totalDays,weekdayShare=weekdays/totalDays;
+  const dayType=date=>{const dow=date.getUTCDay();return workDays===7||(workDays===6&&dow!==0)||(workDays===5&&dow>=1&&dow<=5)};
+  const tariff=(date,minute)=>{
+   const sunday=date.getUTCDay()===0;
+   if(mode==='new'){if(!sunday&&((minute>=570&&minute<690)||(minute>=1020&&minute<1200)))return 'peak';if(minute>=1320||minute<240)return 'offpeak';return 'normal'}
+   if(!sunday&&minute>=1050&&minute<1350)return 'peak';if(minute<360)return 'offpeak';return 'normal';
+  };
+  const eff={normal:0,peak:0,offpeak:0};
+  dates.forEach(date=>{if(!dayType(date))return;for(let m=startMin;m<endMin;m+=30){const c=tariff(date,m),overlap=Math.max(0,Math.min(m+30,lunchEnd)-Math.max(m,lunchStart))/30;eff[c]+=.5*(1-overlap*lunchOff)}});
+  const energy={normal:normalKwh*(1-outsideShare),peak:peakKwh*(1-outsideShare),offpeak:offKwh*(1-outsideShare)},kw={};
+  for(const k of ['normal','peak','offpeak']){if(energy[k]>0&&eff[k]<=0)throw Error('Không có giờ hoạt động trong khung '+k+'. Kiểm tra lịch ca và khung giá.');kw[k]=eff[k]>0?energy[k]/eff[k]:0}
+  const workShare=workDays/7;
   loadProfileTimes.forEach((t,i)=>{
-   const minute=360+i*30;
-   let weekdayClass='normal',sundayClass='normal';
-   if(mode==='new'){
-    if(minute>=570&&minute<690)weekdayClass='peak';
-    if(minute>=1020&&minute<1200)weekdayClass='peak';
-   }else{
-    if(minute>=1050&&minute<1350)weekdayClass='peak';
-   }
-   const rate=c=>c==='peak'?peakKw:c==='off'?offKw:normalKw;
-   const kw=weekdayShare*rate(weekdayClass)+sundayShare*rate(sundayClass);
-   $('loadProfile'+i).value=kw.toFixed(2);
+   const minute=360+i*30,dt=new Date(Date.UTC(2026,0,5)),sun=new Date(Date.UTC(2026,0,4));
+   const point=(date)=>{if(!dayType(date)||minute<startMin||minute>=endMin)return 0;const c=tariff(date,minute),isLunch=minute<lunchEnd&&minute+30>lunchStart;return kw[c]*(isLunch?1-lunchOff:1)};
+   const v=workShare*point(dt)+(1-workShare)*point(sun);
+   $('loadProfile'+i).value=v.toFixed(2);
   });
-  const dailyDayKwh=loadProfileTimes.slice(0,-1).reduce((sum,_,i)=>sum+(Number($('loadProfile'+i).value)+Number($('loadProfile'+(i+1)).value))*.25,0);
-  $('loadSizingStatus').textContent='Đã dựng đường phụ tải theo '+(mode==='old'?'KHUNG GIỜ CŨ':'KHUNG GIỜ MỚI')+' từ '+rows.length+' hóa đơn, '+totalDays+' ngày ('+weekdays+' ngày Thứ Hai–Thứ Bảy, '+sundays+' Chủ nhật). Điện năng 06:00–17:00 ước tính: '+dailyDayKwh.toFixed(1)+' kWh/ngày.';
+  const energy0617=loadProfileTimes.slice(0,-1).reduce((sum,_,i)=>sum+(Number($('loadProfile'+i).value)+Number($('loadProfile'+(i+1)).value))*.25,0);
+  $('loadSizingStatus').textContent='Đã dựng đường phụ tải từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Ca '+$('plantStart').value+'–'+$('plantEnd').value+'; nghỉ '+$('plantLunchStart').value+'–'+$('plantLunchEnd').value+'; dừng '+$('plantLunchOff').value+'% máy; điện ngoài ca/ngày nghỉ '+$('plantOutsideShare').value+'%. Điện 06:00–17:00 ước tính ngày hoạt động: '+energy0617.toFixed(1)+' kWh.';
   drawLoadPvComparison();
  }catch(e){$('loadSizingStatus').textContent=e.message}
 }
+
 function initLoadProfileInputs(){
  const box=$('loadProfileInputs');if(!box)return;
  box.innerHTML=loadProfileTimes.map((t,i)=>'<label style="font-size:11px;font-weight:600">'+t+'<input id="loadProfile'+i+'" type="number" min="0" step="0.1" value="" placeholder="kW" style="margin-top:4px;padding:8px"></label>').join('');
