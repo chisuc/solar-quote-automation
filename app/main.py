@@ -468,6 +468,9 @@ def _bill_ocr_image(image):
     # crop is enlarged so small kWh digits remain legible, while charts/QR
     # codes and the contact column are excluded.
     image=ImageOps.exif_transpose(image).convert("L")
+    # Large phone photos make each 2x crop disproportionately expensive on Render.
+    # Normalize dimensions before cropping while retaining enough detail for bill text.
+    image.thumbnail((1600,1600),Image.Resampling.LANCZOS)
     w,h=image.size
     if not _bill_ocr_env_logged:
         try:
@@ -498,11 +501,18 @@ def _bill_ocr_image(image):
         except RuntimeError as exc:
             if "timeout" not in str(exc).lower():
                 raise
-            # A smaller retry is limited to this crop, never the whole page.
-            crop.thumbnail((850,650),Image.Resampling.LANCZOS)
-            part=pytesseract.image_to_string(
-                crop,lang="vie",config="--oem 1 --psm 6",timeout=5
-            )
+            # Retry once at a smaller size. If this block is still slow, keep
+            # processing the remaining bill regions instead of failing the whole file.
+            crop.thumbnail((700,520),Image.Resampling.LANCZOS)
+            try:
+                part=pytesseract.image_to_string(
+                    crop,lang="vie",config="--oem 1 --psm 6",timeout=4
+                )
+            except RuntimeError as retry_exc:
+                if "timeout" not in str(retry_exc).lower():
+                    raise
+                print(f"Bill OCR crop {index+1} timed out twice; continuing with other regions",flush=True)
+                part=""
         parts.append(part)
 
     text="\n".join(parts)
@@ -510,9 +520,16 @@ def _bill_ocr_image(image):
     # whole-page fallback only when the cropped text is clearly insufficient.
     if len(text.strip())<100:
         image.thumbnail((1100,1100),Image.Resampling.LANCZOS)
-        text=pytesseract.image_to_string(
-            image,lang="vie",config="--oem 1 --psm 6",timeout=8
-        )
+        try:
+            fallback=pytesseract.image_to_string(
+                image,lang="vie",config="--oem 1 --psm 6",timeout=6
+            )
+            if len(fallback.strip())>len(text.strip()):
+                text=fallback
+        except RuntimeError as exc:
+            if "timeout" not in str(exc).lower():
+                raise
+            print("Bill OCR full-page fallback timed out; returning any text recovered from crops",flush=True)
     return text
 
 def _bill_read_document(data,ext):
