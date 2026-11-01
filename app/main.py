@@ -87,7 +87,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div id='loadSizingContent' style='display:none;margin-top:14px'>
 <p class='muted'>Chỉ cần tải hóa đơn EVN và khai báo lịch vận hành. Website tự ước tính phụ tải 30 phút từ sản lượng theo khung giờ; không cần xuất dữ liệu từ công tơ.</p>
 <div class='grid'>
-<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện nhiều tháng / nhiều kỳ (PDF, JPG, PNG, WEBP — tối đa 50 file/lần)</label><div class='row'><input id='billFiles' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' multiple style='max-width:520px'><button class='btn alt' type='button' onclick='readBills()'>Đọc & tổng hợp hóa đơn</button><span id='billReadStatus' class='muted'></span></div><div class='muted'>Có thể chọn đồng thời hóa đơn VAT và bảng kê chi tiết. Website sẽ phát hiện cùng kỳ để tránh cộng trùng.</div></div><div class='field' style='grid-column:1/-1'><div id='billBatchSummary' class='muted'>Chưa có dữ liệu hóa đơn.</div><div id='billGroupSummary' style='margin-top:12px'></div><div id='billMonthlySummary' style='margin-top:12px'></div><div class='field' style='margin-top:12px'><label>Nhóm hóa đơn dùng để tính sizing PV / pin</label><select id='billGroupSelect' onchange='applyBillGroup()' style='width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:8px'><option value=''>Chọn nhóm hóa đơn</option></select><small class='muted'>Chỉ cộng các hóa đơn cùng loại điện, cấp điện áp và hình thức giá; không trộn sinh hoạt với sản xuất/kinh doanh.</small></div><div style='overflow-x:auto;margin-top:8px'><table id='billBatchTable' style='width:100%;border-collapse:collapse;font-size:13px;display:none'><thead><tr><th>Tệp / kỳ hóa đơn</th><th>Loại điện</th><th>Hình thức giá</th><th>Sản lượng bậc</th><th>Cấp áp</th><th>Bình thường</th><th>Cao điểm</th><th>Thấp điểm</th><th>Tổng kWh</th><th>Sản lượng TB (kWh/ngày)</th><th>Tiền điện</th><th>Giá điện TB (đ/kWh)</th><th>Trạng thái</th></tr></thead><tbody id='billBatchRows'></tbody></table></div></div>
+<div class='field' style='grid-column:1/-1'><label>Hóa đơn điện nhiều tháng / nhiều kỳ (PDF, JPG, PNG, WEBP — tối đa 50 file/lần)</label><div class='row'><input id='billFiles' type='file' accept='.pdf,.jpg,.jpeg,.png,.webp' multiple style='max-width:520px'><button class='btn alt' type='button' onclick='readBills()'>Đọc & tổng hợp hóa đơn</button><span id='billReadStatus' class='muted'></span><div id='billReadProgress' style='width:100%;margin-top:8px' aria-live='polite'></div></div><div class='muted'>Có thể chọn đồng thời hóa đơn VAT và bảng kê chi tiết. Website sẽ phát hiện cùng kỳ để tránh cộng trùng.</div></div><div class='field' style='grid-column:1/-1'><div id='billBatchSummary' class='muted'>Chưa có dữ liệu hóa đơn.</div><div id='billGroupSummary' style='margin-top:12px'></div><div id='billMonthlySummary' style='margin-top:12px'></div><div class='field' style='margin-top:12px'><label>Nhóm hóa đơn dùng để tính sizing PV / pin</label><select id='billGroupSelect' onchange='applyBillGroup()' style='width:100%;padding:10px;border:1px solid #ccd9d2;border-radius:8px'><option value=''>Chọn nhóm hóa đơn</option></select><small class='muted'>Chỉ cộng các hóa đơn cùng loại điện, cấp điện áp và hình thức giá; không trộn sinh hoạt với sản xuất/kinh doanh.</small></div><div style='overflow-x:auto;margin-top:8px'><table id='billBatchTable' style='width:100%;border-collapse:collapse;font-size:13px;display:none'><thead><tr><th>Tệp / kỳ hóa đơn</th><th>Loại điện</th><th>Hình thức giá</th><th>Sản lượng bậc</th><th>Cấp áp</th><th>Bình thường</th><th>Cao điểm</th><th>Thấp điểm</th><th>Tổng kWh</th><th>Sản lượng TB (kWh/ngày)</th><th>Tiền điện</th><th>Giá điện TB (đ/kWh)</th><th>Trạng thái</th></tr></thead><tbody id='billBatchRows'></tbody></table></div></div>
 <div class='field'><label>Tổng điện năng hóa đơn (kWh)</label><input id='billMonthKwh' type='number' min='0' step='.01' placeholder='Nhập hoặc kiểm tra số đọc được'></div>
 <div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
 <div class='field'><label>Sản lượng trung bình (kWh/ngày)</label><input id='billDailyAverage' type='number' readonly placeholder='Tự tính từ tổng kWh / số ngày'></div>
@@ -362,21 +362,43 @@ function renderBillBatch(){
  else if(groupKeys.length>1){$('billMonthKwh').value='';$('billDays').value=30;loadSizingResult=null;$('billReadStatus').textContent='Có nhiều nhóm loại điện/cấp áp. Chọn đúng nhóm trước khi tính sizing.'}
 }
 
-async function readBills(){
- const files=[...$('billFiles').files];if(!files.length){$('billReadStatus').textContent='Chọn ít nhất một hóa đơn trước.';return}
+async async function readBills(){
+ const files=[...$('billFiles').files];
+ if(!files.length){$('billReadStatus').textContent='Chọn ít nhất một hóa đơn trước.';return}
  if(files.length>50){$('billReadStatus').textContent='Mỗi lần tải tối đa 50 file.';return}
- const fd=new FormData();files.forEach(f=>fd.append('files',f));
- try{
-  $('billReadStatus').textContent='Đang đọc '+files.length+' hóa đơn...';
-  const res=await fetch('/api/bills/read',{method:'POST',body:fd});let d={};try{d=await res.json()}catch(_){}
-  if(!res.ok)throw Error(d.detail||'Không đọc được hóa đơn');
-  billBatchResults=d.results||[];renderBillBatch();calcBillNightShare();
+ billBatchResults=[];
+ const progress=$('billReadProgress');
+ const escHtml=s=>String(s||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+ const renderProgress=(done,current,status)=>{
   const ok=billBatchResults.filter(x=>x.monthly_kwh&&!x.error).length;
-  $('billReadStatus').textContent='Đã xử lý '+billBatchResults.length+' file, nhận diện được '+ok+' file có tổng kWh.';
-  $('loadSizingStatus').textContent='Kiểm tra các kỳ bị trùng và số liệu từng hóa đơn trước khi tính công suất.';
- }catch(e){$('billReadStatus').textContent=e.message}
+  const failed=billBatchResults.filter(x=>x.error).length;
+  $('billReadStatus').textContent='Đang đọc '+done+'/'+files.length+' file · nhận diện được '+ok+'/'+done+' · lỗi/chưa đọc được '+failed;
+  progress.innerHTML='<div style="height:8px;background:#e7efeb;border-radius:8px;overflow:hidden;margin:8px 0"><div style="height:100%;width:'+(done/files.length*100)+'%;background:#16845b;transition:width .2s"></div></div><div style="font-size:13px;font-weight:600;margin-bottom:6px">'+escHtml(status||'Đang xử lý: '+current)+'</div><div style="display:grid;gap:5px">'+files.map((file,i)=>{
+   const item=billBatchResults[i];
+   let label='Đang chờ';let color='#687a73';
+   if(item){label=item.error?'Không đọc được: '+item.error:(item.monthly_kwh?'Đọc thành công · '+Number(item.monthly_kwh).toLocaleString('vi-VN')+' kWh':'Đã xử lý nhưng thiếu tổng kWh');color=item.error?'#b42318':'#16845b'}
+   else if(i===done&&current){label='Đang đọc...';color='#9a6700'}
+   return '<div style="display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #edf1ef;padding:5px 0;font-size:12px"><span style="overflow-wrap:anywhere">'+(i+1)+'. '+escHtml(file.name)+'</span><span style="color:'+color+';text-align:right;min-width:180px">'+escHtml(label)+'</span></div>';
+  }).join('')+'</div>';
+ };
+ renderProgress(0,files[0]?.name,'Đã nhận '+files.length+' file. Bắt đầu đọc lần lượt...');
+ for(let i=0;i<files.length;i++){
+  const file=files[i];renderProgress(i,file.name,'Đang đọc file '+(i+1)+'/'+files.length+': '+file.name);
+  try{
+   const fd=new FormData();fd.append('files',file);
+   const res=await fetch('/api/bills/read',{method:'POST',body:fd});
+   let data={};try{data=await res.json()}catch(_){}
+   if(!res.ok)throw Error(data.detail||'Máy chủ trả về lỗi HTTP '+res.status);
+   const item=(data.results||[])[0]||{filename:file.name,error:'Máy chủ không trả kết quả cho file này',monthly_kwh:null};
+   billBatchResults.push(item);
+  }catch(e){billBatchResults.push({filename:file.name,error:'Lỗi xử lý: '+e.message,monthly_kwh:null})}
+  renderBillBatch();calcBillNightShare();renderProgress(i+1,files[i+1]?.name,i+1===files.length?'Đã hoàn tất xử lý tất cả file.':'Đã xong '+(i+1)+'/'+files.length+' file.');
+ }
+ const ok=billBatchResults.filter(x=>x.monthly_kwh&&!x.error).length;
+ const fail=billBatchResults.length-ok;
+ $('billReadStatus').textContent='Hoàn tất: đọc được '+ok+'/'+files.length+' file; '+fail+' file lỗi hoặc chưa nhận diện đủ tổng kWh.';
+ $('loadSizingStatus').textContent='Kiểm tra các kỳ bị trùng và số liệu từng hóa đơn trước khi tính công suất.';
 }
-
 $('billDayShare').addEventListener('input',()=>{calcBillNightShare();loadSizingResult=null});
 for(const id of ['billMonthKwh','billDays','billPsh','billDod'])$(id).addEventListener('input',()=>{loadSizingResult=null});
 
