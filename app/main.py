@@ -568,7 +568,7 @@ def _bill_extract_values(text):
     # TOU rows, derive off-peak as the balancing quantity.
     total_hint=None
     if kwh is None:
-        tm_total=re.search(r"T[oô]ng\\s*:\\s*([\\d.,]+)",normalized,re.I)
+        tm_total=re.search(r"T[oô]ng\s*:\s*([\d.,]+)",normalized,re.I)
         if tm_total:
             total_hint=_bill_number(tm_total.group(1))
         if total_hint and "normal" in tou and "peak" in tou and "offpeak" not in tou:
@@ -656,7 +656,7 @@ def _bill_extract_values(text):
         import unicodedata
         plain="".join(ch for ch in unicodedata.normalize("NFD",normalized)
                       if unicodedata.category(ch)!="Mn").replace("đ","d").replace("Đ","D")
-        mm=re.search(r"(?:tong cong tien thanh toan|tong tien thanh toan|so tien thanh toan)[^\\d]{0,60}([\\d.,]+)",plain,re.I)
+        mm=re.search(r"(?:tong cong tien thanh toan|tong tien thanh toan|so tien thanh toan)[^\d]{0,60}([\d.,]+)",plain,re.I)
         if mm:
             amount=_bill_number(mm.group(1))
             if amount is not None and amount<=1000000 and amount>0:
