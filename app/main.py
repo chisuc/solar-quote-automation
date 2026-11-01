@@ -1,4 +1,4 @@
-import os, json, uuid, secrets, hmac, mimetypes, asyncio, io, zipfile, re, xml.etree.ElementTree as ET
+import os, json, uuid, secrets, hmac, mimetypes, asyncio, io, zipfile, re, time, xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List
 from datetime import datetime, timezone
@@ -744,8 +744,11 @@ async def read_electricity_bills(request:Request,files:List[UploadFile]=File(...
         if not data or len(data)>20*1024*1024:
             results.append({"filename":name,"error":"File trống hoặc vượt quá 20 MB","monthly_kwh":None}); continue
         text=""; used_ocr=False
+        started=time.perf_counter()
         try:
             text,used_ocr=await asyncio.to_thread(_bill_read_document,data,ext)
+            elapsed=round(time.perf_counter()-started,2)
+            print(f"Bill OCR completed: {name}; seconds={elapsed}; ocr={used_ocr}",flush=True)
             if not text.strip():
                 results.append({"filename":name,"error":"Không nhận diện được nội dung","monthly_kwh":None}); continue
             item=_bill_extract_values(text)
