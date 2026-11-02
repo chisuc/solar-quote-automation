@@ -174,9 +174,10 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 </div>
 </div>
 </div></div>
-<details class='panel' id='pvwattsOptions'>
-<summary style='cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;font-weight:700;color:#176b4b'>
-<span>Mô phỏng sản lượng PVWatts V8</span><span class='muted' style='font-size:12px;font-weight:400'>Bấm để thu gọn / mở rộng</span>
+<details class='panel' id='pvwattsOptions' style='border:2px solid #cfe3d8'>
+<summary style='cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px'>
+<span><span style='font-weight:700;color:#176b4b;font-size:15px'>☀️ Mô phỏng sản lượng PVWatts V8</span><span class='muted' style='display:block;margin-top:5px'>Nhập tọa độ và thông số để mô phỏng sản lượng điện mặt trời.</span></span>
+<span class='btn alt' id='pvwattsToggleLabel' style='white-space:nowrap;pointer-events:none'>＋ Mở mô phỏng</span>
 </summary>
 <div style='padding-top:12px'><p class='muted'>Nhập tọa độ và thông số mô phỏng, sau đó bấm lấy dữ liệu trực tiếp từ PVWatts.</p><div class='grid'>
 <div class='field' style='grid-column:1/-1'><label>Tọa độ công trình (dán Latitude, Longitude)</label><input id='coordPaste' type='text' placeholder='Ví dụ: 10.821006371676384, 106.68872440336703' autocomplete='off'><div id='coordStatus' class='muted'>Dán một dòng tọa độ Google Maps; website tự tách vĩ độ và kinh độ.</div><input id='lat' type='hidden'><input id='lon' type='hidden'></div>
@@ -203,6 +204,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='panel'><h3>Hình ảnh phục vụ báo giá PowerPoint</h3><p class='muted'>Tải riêng ảnh hiện trạng mái và ảnh bố trí tấm PV. Ảnh được lưu theo đúng dự án đang mở.</p><div class='grid'><div class='field'><label>1. Hình ảnh mái thực tế</label><input id='roofRealImages' type='file' accept='image/jpeg,image/png,image/webp' multiple><div class='row'><button class='btn' type='button' onclick="uploadProjectImages('roof-real')">Tải ảnh mái thực tế</button></div><div id='roofRealImageList' class='muted'>Chưa có ảnh.</div></div><div class='field'><label>2. Hình ảnh mái bố trí PV</label><input id='roofPvImages' type='file' accept='image/jpeg,image/png,image/webp' multiple><div class='row'><button class='btn' type='button' onclick="uploadProjectImages('roof-pv')">Tải ảnh bố trí PV</button></div><div id='roofPvImageList' class='muted'>Chưa có ảnh.</div></div></div></div><div class='panel'><h3>Hồ sơ đầu vào</h3><input id='files' type='file' multiple><div class='row'><button class='btn' onclick='upload()'>Tải file lên máy chủ</button></div><div id='fileList' class='muted'></div></div>
 <div class='panel'><h3>Dự án đã lưu</h3><div class='row'><button class='btn' onclick='save()'>Lưu dự án</button><button class='btn alt' onclick='fresh()'>Dự án mới</button><button class='btn alt' onclick='exportJson()'>Xuất JSON</button></div><div id='projects'>Đang tải...</div><div id='status' class='muted'></div></div></section></main>
 <script>
+const pvDetails=document.getElementById('pvwattsOptions');
+if(pvDetails){pvDetails.addEventListener('toggle',()=>{const b=document.getElementById('pvwattsToggleLabel');if(b)b.textContent=pvDetails.open?'− Thu gọn mô phỏng':'＋ Mở mô phỏng'})}
 let pid=null,pvwattsResult=null,gsaImages=[],financialReportId=null,currentFolderId=null,currentFolderName='',currentFolderDate='';const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','customer','contact','phone','address','date','quoteValidUntil','industry','solarRadiation','roofCondition','usagePattern','roof','roofType','plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
 function setQuoteAuto(id,value){const cb=$('auto_'+id),el=$(id);if(cb&&cb.checked&&value!==null&&value!==undefined&&Number.isFinite(Number(value)))el.value=Number(value).toFixed(id==='load'||id==='annual'?2: id==='price'?2:0)}
 function toggleQuoteAuto(id){const cb=$('auto_'+id),el=$(id);if(el)el.readOnly=!!cb.checked&&(id==='vatMoney'||id==='grand');syncQuoteAuto();calc()}
