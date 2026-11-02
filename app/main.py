@@ -149,7 +149,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
 <div id='loadPvChart' style='display:none;margin-top:16px;border:1px solid #e2eae5;border-radius:9px;padding:10px'>
 <div id='loadPvChartSvg'></div>
-<div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#16845b'>━ Phụ tải nhà máy (kW)</span><span style='color:#e3a12b'>━ PV trung bình theo giờ (kW)</span></div>
+<div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#e53935'>━ Phụ tải nhà máy (kW)</span><span style='color:#168a55'>▰ PV trung bình theo giờ (kW)</span></div>
 <div id='loadPvMetrics' class='grid' style='margin-top:12px'></div>
 <p class='muted' id='loadPvNote' style='margin:10px 0 0'></p>
 </div>
@@ -386,12 +386,13 @@ function drawLoadPvComparison(){
     pvSmooth+=' C'+c1x.toFixed(1)+' '+c1y.toFixed(1)+','+c2x.toFixed(1)+' '+c2y.toFixed(1)+','+p2.x.toFixed(1)+' '+p2.y.toFixed(1);
    }
   }
-  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="So sánh phụ tải nhà máy và đường cong sản lượng PV trung bình theo giờ từ 6 giờ đến 17 giờ">'+grid+(hasPv?'<path d="'+pvSmooth+'" fill="none" stroke="#e3a12b" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#16845b" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
+  const pvArea=hasPv?pvSmooth+' L'+pts[pts.length-1].x.toFixed(1)+' '+y(0).toFixed(1)+' L'+pts[0].x.toFixed(1)+' '+y(0).toFixed(1)+' Z':'';
+  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ miền sản lượng PV màu xanh và đường phụ tải nhà máy màu đỏ từ 6 giờ đến 17 giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div><h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div></div>';
   let metrics=card('Điện năng phụ tải 06–17',energy,'kWh/ngày')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình 06–17',average,'kW');
   if(hasPv){const loadCoverage=energy>0?selfUse/energy*100:0,pvSelfRate=pvEnergy>0?selfUse/pvEnergy*100:0;metrics+=card('PV trung bình 06–17',pvEnergy,'kWh/ngày')+card('PV tự tiêu thụ',selfUse,'kWh/ngày')+card('Điện lưới cần bổ sung',gridImport,'kWh/ngày')+card('Điện PV dư',exportEnergy,'kWh/ngày')+card('Tỷ lệ phụ tải được PV đáp ứng',loadCoverage,'%')+card('Tỷ lệ PV được tự tiêu thụ',pvSelfRate,'%')}
   $('loadPvMetrics').innerHTML=metrics;
-  $('loadPvNote').textContent=hasPv?'Đường xanh: phụ tải nhà máy (kW). Đường vàng: công suất PV trung bình tại cùng giờ, tính từ 8.760 giá trị PVWatts của năm khí tượng điển hình (mỗi giờ có 365 mẫu). Điện PV tự tiêu thụ = tổng min(PV, phụ tải) trong 22 khoảng 30 phút từ 06:00 đến 17:00; điện lưới bổ sung và điện PV dư được tính theo từng khoảng. Đây là mô phỏng theo ngày trung bình, chưa phản ánh biến động từng ngày/mùa và chưa xét giới hạn công suất inverter, pin lưu trữ.' :'Chưa có dữ liệu PVWatts hourly. Biểu đồ hiện chỉ hiển thị phụ tải; hãy chạy mô phỏng PVWatts để chồng đường sản lượng PV trung bình theo giờ và tính tỷ lệ tự tiêu thụ.';
+  $('loadPvNote').textContent=hasPv?'Miền xanh: sản lượng PV trung bình theo giờ (kW). Đường đỏ: phụ tải nhà máy (kW), tính từ 8.760 giá trị PVWatts của năm khí tượng điển hình (mỗi giờ có 365 mẫu). Điện PV tự tiêu thụ = tổng min(PV, phụ tải) trong 22 khoảng 30 phút từ 06:00 đến 17:00; điện lưới bổ sung và điện PV dư được tính theo từng khoảng. Đây là mô phỏng theo ngày trung bình, chưa phản ánh biến động từng ngày/mùa và chưa xét giới hạn công suất inverter, pin lưu trữ.' :'Chưa có dữ liệu PVWatts hourly. Biểu đồ hiện chỉ hiển thị phụ tải; hãy chạy mô phỏng PVWatts để chồng đường sản lượng PV trung bình theo giờ và tính tỷ lệ tự tiêu thụ.';
   $('loadPvChart').style.display='block';
  }catch(e){$('loadSizingStatus').textContent=e.message}
 }
