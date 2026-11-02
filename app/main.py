@@ -1023,11 +1023,12 @@ async def pvwatts(request:Request):
             "system_capacity":p["system_capacity"],"module_type":p["module_type"],
             "array_type":p["array_type"],"tilt":p["tilt"],"azimuth":p["azimuth"],
             "losses":p["losses"],"dc_ac_ratio":p["dc_ac_ratio"],
-            "inv_eff":p["inv_eff"],"gcr":p["gcr"],"timeframe":"monthly"
+            "inv_eff":p["inv_eff"],"gcr":p["gcr"]
         }
         if int(p.get("use_wf_albedo",1))==1: params["use_wf_albedo"]=1
         elif p.get("albedo") is not None: params["albedo"]=p["albedo"]
-        resp=requests.get("https://developer.nlr.gov/api/pvwatts/v8.json",params=params,timeout=60)
+        monthly_params={**params,"timeframe":"monthly"}
+        resp=requests.get("https://developer.nlr.gov/api/pvwatts/v8.json",params=monthly_params,timeout=60)
         try: data=resp.json()
         except ValueError: raise HTTPException(502,"PVWatts trả về dữ liệu không hợp lệ.")
         if resp.status_code>=400 or data.get("errors"):
@@ -1036,9 +1037,27 @@ async def pvwatts(request:Request):
         out=data.get("outputs",{})
         monthly=out.get("ac_monthly",[])
         if len(monthly)!=12: raise HTTPException(502,"PVWatts không trả đủ 12 giá trị sản lượng tháng.")
+        hourly_params={**params,"timeframe":"hourly"}
+        hresp=requests.get("https://developer.nlr.gov/api/pvwatts/v8.json",params=hourly_params,timeout=90)
+        try: hdata=hresp.json()
+        except ValueError: raise HTTPException(502,"PVWatts hourly trả về dữ liệu không hợp lệ.")
+        if hresp.status_code>=400 or hdata.get("errors"):
+            detail="; ".join(hdata.get("errors") or [f"PVWatts hourly HTTP {hresp.status_code}"])
+            raise HTTPException(422,detail[:600])
+        ac=hdata.get("outputs",{}).get("ac",[])
+        if len(ac)!=8760: raise HTTPException(502,f"PVWatts hourly trả về {len(ac)} giờ, không phải 8.760 giờ.")
+        hourly_sum=[0.0]*24
+        hourly_count=[0]*24
+        for index,value in enumerate(ac):
+            hour=index%24
+            hourly_sum[hour]+=float(value or 0)
+            hourly_count[hour]+=1
+        hourly_average_kw=[round((hourly_sum[h]/hourly_count[h])/1000,6) for h in range(24)]
         station=data.get("station_info",{})
         return {"version":data.get("version"),"monthly":monthly,"annual":out.get("ac_annual"),
                 "solrad_monthly":out.get("solrad_monthly"),"solrad_annual":out.get("solrad_annual"),
+                "hourly_average_kw":hourly_average_kw,"hourly_sample_days":hourly_count,
+                "hourly_source":"PVWatts V8 typical meteorological year · 8,760 hourly AC values",
                 "station":station.get("city") or station.get("location"),
                 "warnings":data.get("warnings",[]),"inputs":data.get("inputs",{})}
     except HTTPException: raise
