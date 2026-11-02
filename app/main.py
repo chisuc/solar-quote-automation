@@ -343,6 +343,31 @@ function applyBillGroup(){
  $('billReadStatus').textContent='Đã chọn nhóm '+key+' để tính sizing. Các nhóm khác không bị cộng chung.';
  if(rows.every(x=>x.period_start&&x.period_end&&x.tou_kwh&&['normal','peak','offpeak'].every(k=>Number.isFinite(Number(x.tou_kwh[k])))))buildLoadProfileFromTou();
 }
+function updateBillManual(index,key,value,subkey){
+ const row=billBatchResults[index];if(!row)return;
+ const v=String(value).trim();
+ if(key==='tou_kwh'){
+  row.tou_kwh=row.tou_kwh||{};
+  const num=v===''?null:Number(v);
+  if(v===''||!Number.isFinite(num)||num<0)delete row.tou_kwh[subkey];
+  else row.tou_kwh[subkey]=num;
+ }else{
+  const num=v===''?null:Number(v);
+  if(v===''||!Number.isFinite(num)||num<0)delete row[key];
+  else row[key]=num;
+ }
+ if(row.monthly_kwh&&row.amount_vnd)row.average_price_vnd_kwh=row.amount_vnd/row.monthly_kwh;
+ else delete row.average_price_vnd_kwh;
+ row._manualEdited=true;
+ const selected=$('billGroupSelect').value;
+ renderBillBatch();
+ if(selected&&[...$('billGroupSelect').options].some(o=>o.value===selected)){$('billGroupSelect').value=selected;applyBillGroup()}
+ $('billReadStatus').textContent='Đã cập nhật số liệu nhập tay. Kiểm tra tổng khung giờ có khớp tổng kWh trước khi tính sizing.';
+}
+function billEditInput(index,key,value,step='1',subkey){
+ const v=value===undefined||value===null?'':String(value);
+ return '<input type="number" min="0" step="'+step+'" value="'+esc(v)+'" aria-label="Nhập tay '+key+'" onchange="updateBillManual('+index+',\''+key+'\',this.value)" style="width:86px;min-width:66px;padding:5px;border:1px solid #9bb9aa;border-radius:5px;background:#fff">';
+}
 function renderBillBatch(){
  const rows=billBatchResults;const seen=new Map();
  rows.forEach((x,i)=>{x._included=!!(x.monthly_kwh&&!x.error);x._duplicate=false;const k=billPeriodKey(x);if(!k||!x._included)return;const dedupeKey=billGroupKey(x)+'|'+k;if(seen.has(dedupeKey)){const j=seen.get(dedupeKey),a=rows[j],ad=Object.keys(a.tou_kwh||{}).length,bd=Object.keys(x.tou_kwh||{}).length;if(bd>ad){a._included=false;a._duplicate=true;seen.set(dedupeKey,i)}else{x._included=false;x._duplicate=true}}else seen.set(dedupeKey,i)});
@@ -355,7 +380,7 @@ function renderBillBatch(){
  $('billBatchSummary').innerHTML=summary;
  $('billGroupSummary').innerHTML=groupKeys.map(k=>{const arr=groups[k],kwh=sum(arr,'monthly_kwh'),money=sum(arr,'amount_vnd'),avg=kwh&&money?money/kwh:null,hasTou=arr.some(x=>Object.keys(x.tou_kwh||{}).length===3),normal=sum(arr.map(x=>({v:(x.tou_kwh||{}).normal})),'v'),peak=sum(arr.map(x=>({v:(x.tou_kwh||{}).peak})),'v'),off=sum(arr.map(x=>({v:(x.tou_kwh||{}).offpeak})),'v');return '<div style="padding:10px;margin:8px 0;border:1px solid #dce5e1;border-radius:8px"><b>'+esc(k)+'</b><br>'+arr.length+' hóa đơn · '+billFmt(kwh)+' kWh · Giá bình quân '+(avg?billFmt(avg)+' đ/kWh':'chưa đủ dữ liệu tiền điện')+'<br><small>'+(hasTou?'Bình thường '+billFmt(normal)+' · Cao điểm '+billFmt(peak)+' · Thấp điểm '+billFmt(off)+' kWh':'Chưa có đủ dữ liệu ba khung giờ')+'</small></div>'}).join('');
  $('billBatchTable').style.display=rows.length?'table':'none';
- $('billBatchRows').innerHTML=rows.map(x=>'<tr style="border-top:1px solid #dce5e1"><td>'+esc(x.filename||'')+'<br><small>'+esc(x.period||'')+'</small></td><td>'+esc(x.customer_type||'Chưa rõ')+'</td><td>'+esc(x.tariff_type||'—')+'</td><td>'+esc(Object.entries(x.tiers||{}).map(([k,v])=>k.replace('bac_','Bậc ')+' '+billFmt(v.kwh)+' kWh').join('; ')||'—')+'</td><td>'+esc(x.voltage||'—')+'</td><td>'+billFmt((x.tou_kwh||{}).normal)+'</td><td>'+billFmt((x.tou_kwh||{}).peak)+'</td><td>'+billFmt((x.tou_kwh||{}).offpeak)+'</td><td>'+billFmt(x.monthly_kwh)+'</td><td>'+(x.period_days?billFmt(x.monthly_kwh/x.period_days):'—')+'</td><td>'+billFmt(x.amount_vnd)+'</td><td>'+(x.average_price_vnd_kwh?billFmt(x.average_price_vnd_kwh):'—')+'</td><td>'+(x._duplicate?'Trùng kỳ — không cộng':x.error?esc(x.error):x._included?'Được tính':'Không tính')+'</td></tr>').join('');
+ $('billBatchRows').innerHTML=rows.map((x,i)=>'<tr style="border-top:1px solid #dce5e1"><td>'+esc(x.filename||'')+'<br><small>'+esc(x.period||'')+'</small></td><td>'+esc(x.customer_type||'Chưa rõ')+'</td><td>'+esc(x.tariff_type||'—')+'</td><td>'+esc(Object.entries(x.tiers||{}).map(([k,v])=>k.replace('bac_','Bậc ')+' '+billFmt(v.kwh)+' kWh').join('; ')||'—')+'</td><td>'+esc(x.voltage||'—')+'</td><td>'+billEditInput(i,'tou_kwh',(x.tou_kwh||{}).normal,'1','normal')+'</td><td>'+billEditInput(i,'tou_kwh',(x.tou_kwh||{}).peak,'1','peak')+'</td><td>'+billEditInput(i,'tou_kwh',(x.tou_kwh||{}).offpeak,'1','offpeak')+'</td><td>'+billEditInput(i,'monthly_kwh',x.monthly_kwh,'0.01')+'</td><td>'+billEditInput(i,'period_days',x.period_days)+'</td><td>'+billEditInput(i,'amount_vnd',x.amount_vnd,'1')+'</td><td>'+(x.average_price_vnd_kwh?billFmt(x.average_price_vnd_kwh):'—')+'</td><td>'+(x._duplicate?'Trùng kỳ — không cộng':x.error?esc(x.error):x._included?'Được tính':'Không tính')+(x._manualEdited?' · Đã sửa tay':'')+'</td></tr>').join('');
  if(groupKeys.length===1){$('billGroupSelect').value=groupKeys[0];applyBillGroup()}
  else if(groupKeys.length>1){$('billMonthKwh').value='';$('billDays').value=30;loadSizingResult=null;$('billReadStatus').textContent='Có nhiều nhóm loại điện/cấp áp. Chọn đúng nhóm trước khi tính sizing.'}
 }
