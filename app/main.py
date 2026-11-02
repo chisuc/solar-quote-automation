@@ -294,22 +294,32 @@ function togglePlantScheduleMode(){
 function buildLoadProfileFromTou(){
  try{
   const group=$('billGroupSelect').value;
-  if(!group)throw Error('Hãy chọn nhóm hóa đơn trước.');
-  const rows=billBatchResults.filter(x=>x._included&&billGroupKey(x)===group);
-  if(!rows.length)throw Error('Nhóm hóa đơn đã chọn không có dữ liệu.');
+  const rows=group?billBatchResults.filter(x=>x._included&&billGroupKey(x)===group):[];
   const household=$('loadCustomerMode')?.value==='household';
   if(household){
-   if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Hóa đơn thiếu ngày bắt đầu/kết thúc kỳ.');
+   // Household mode can use either the selected invoice batch or the
+   // already-populated total kWh / billing days fields. Do not require a
+   // commercial tariff group for residential bills or manually entered data.
+   let totalKwh=0,totalDays=0,sourceLabel='';
+   if(rows.length){
+    rows.forEach(row=>{const st=new Date(row.period_start+'T00:00:00Z'),en=new Date(row.period_end+'T00:00:00Z');if(isNaN(st)||isNaN(en)||en<st)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));totalDays+=Math.round((en-st)/86400000)+1;totalKwh+=Number(row.monthly_kwh)||0});
+    sourceLabel=rows.length+' hóa đơn / '+totalDays+' ngày';
+   }else{
+    totalKwh=Number($('billMonthKwh').value)||0;
+    totalDays=Number($('billDays').value)||0;
+    if(totalKwh<=0||totalDays<=0)throw Error('Chưa có tổng kWh và số ngày hợp lệ. Hãy nhập tổng điện năng hóa đơn và số ngày, hoặc chọn nhóm hóa đơn đã đọc.');
+    sourceLabel='tổng hóa đơn đã nhập / '+totalDays+' ngày';
+   }
    const dayShare=Number($('billDayShare').value),nightShare=Number($('billNightShare').value);
-   if(!Number.isFinite(dayShare)||dayShare<0||dayShare>100||Math.abs(dayShare+nightShare-100)>.11)throw Error('Tỷ lệ ngày và đêm phải hợp lệ và tổng bằng 100%.');
-   let totalKwh=0,totalDays=0;
-   rows.forEach(row=>{const st=new Date(row.period_start+'T00:00:00Z'),en=new Date(row.period_end+'T00:00:00Z');if(isNaN(st)||isNaN(en)||en<st)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));totalDays+=Math.round((en-st)/86400000)+1;totalKwh+=Number(row.monthly_kwh)||0});
+   if(!Number.isFinite(dayShare)||dayShare<0||dayShare>100||!Number.isFinite(nightShare)||nightShare<0||nightShare>100||Math.abs(dayShare+nightShare-100)>.11)throw Error('Tỷ lệ 00:00–18:00 và 18:00–24:00 phải hợp lệ và tổng bằng 100%.');
    if(totalDays<=0||totalKwh<=0)throw Error('Không có tổng kWh hoặc số ngày hợp lệ để dựng phụ tải hộ dân.');
-   const dayKwh=totalKwh/totalDays*dayShare/100,nightKwh=totalKwh/totalDays*nightShare/100,dayKw=dayKwh/18,nightKw=nightKwh/6;
+   const dailyKwh=totalKwh/totalDays,dayKwh=dailyKwh*dayShare/100,nightKwh=dailyKwh*nightShare/100,dayKw=dayKwh/18,nightKw=nightKwh/6;
    loadProfileTimes.forEach((t,i)=>{$('loadProfile'+i).value=(Number(t.slice(0,2))<18?dayKw:nightKw).toFixed(2)});
-   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân 24/24 từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Tỷ lệ 00:00–18:00: '+dayShare.toFixed(1)+'%, 18:00–24:00: '+nightShare.toFixed(1)+'%. Công suất trung bình ban ngày '+dayKw.toFixed(2)+' kW (tổng '+dayKwh.toFixed(1)+' kWh/ngày); buổi tối '+nightKw.toFixed(2)+' kW (tổng '+nightKwh.toFixed(1)+' kWh/ngày). Biểu đồ hiển thị 06:00–20:00, chuyển từ tải ngày sang tải tối lúc 18:00.';
+   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân từ '+sourceLabel+'. Tổng trung bình '+dailyKwh.toFixed(2)+' kWh/ngày; 00:00–18:00: '+dayShare.toFixed(1)+'% ('+dayKwh.toFixed(2)+' kWh/ngày, '+dayKw.toFixed(2)+' kW); 18:00–24:00: '+nightShare.toFixed(1)+'% ('+nightKwh.toFixed(2)+' kWh/ngày, '+nightKw.toFixed(2)+' kW). Biểu đồ hiển thị 06:00–20:00 và chuyển sang tải buổi tối từ 18:00.';
    drawLoadPvComparison();return;
   }
+  if(!group)throw Error('Hãy chọn nhóm hóa đơn trước.');
+  if(!rows.length)throw Error('Nhóm hóa đơn đã chọn không có dữ liệu.');
   if(!rows.every(x=>['kinh doanh','sản xuất'].some(t=>(x.customer_type||'').toLowerCase().includes(t))))throw Error('Nhà máy cần chọn nhóm hóa đơn điện sản xuất/kinh doanh.');
   if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Hóa đơn thiếu ngày bắt đầu/kết thúc kỳ.');
   const continuous=$('plantLoadMode').value==='continuous';
