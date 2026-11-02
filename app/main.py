@@ -391,7 +391,7 @@ function drawLoadPvComparison(){
   const pvAt=i=>{if(!hasPv)return 0;const h=startHour+(i+.5)/2,lo=Math.floor(h),hi=Math.min(23,lo+1),f=h-lo;return Number(hourly[lo]||0)*(1-f)+Number(hourly[hi]||0)*f};
   const pvEnergy=hasPv?hourly.slice(startHour,endHour).reduce((sum,v)=>sum+Number(v||0),0):0;
   let selfUse=0,gridImport=0,exportEnergy=0,batteryDischarge=0,batteryExhaustAt=null;
-  const batteryCurve=Array(intervals+1).fill(0);
+  const batteryCurve=Array(intervals).fill(0);
   if(hasPv){
    let remaining=0;
    if(household){const total=Number($('batTotal')?.value)||((Number($('batKwh')?.value)||loadSizingResult?.batteryKwh||0)*(Number($('batQty')?.value)||1));const dod=(Number($('billDod')?.value)||90)/100;remaining=Math.max(0,total*dod)}
@@ -400,7 +400,7 @@ function drawLoadPvComparison(){
     selfUse+=used;exportEnergy+=surplus;
     let discharge=0;
     if(household&&deficit>0&&remaining>0){discharge=Math.min(deficit,remaining);remaining-=discharge;batteryDischarge+=discharge;if(remaining<=1e-6&&batteryExhaustAt===null)batteryExhaustAt=startHour+(i+1)/2}
-    batteryCurve[i+1]=discharge/.5;
+    batteryCurve[i]=discharge/.5;
     gridImport+=Math.max(0,deficit-discharge);
    }
   }
@@ -415,13 +415,19 @@ function drawLoadPvComparison(){
   let pvSmooth='',pts=[];
   if(hasPv){pts=hourly.slice(startHour,endHour+1).map((v,i)=>({x:x(i*2),y:y(Number(v||0))}));pvSmooth='M'+pts[0].x.toFixed(1)+' '+pts[0].y.toFixed(1);for(let i=0;i<pts.length-1;i++){const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(pts.length-1,i+2)],c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6,c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;pvSmooth+=' C'+c1x.toFixed(1)+' '+c1y.toFixed(1)+','+c2x.toFixed(1)+' '+c2y.toFixed(1)+','+p2.x.toFixed(1)+' '+p2.y.toFixed(1)}}
   const pvArea=hasPv&&pts.length===endHour-startHour+1?pvSmooth+' L'+pts[pts.length-1].x.toFixed(1)+' '+y(0).toFixed(1)+' L'+pts[0].x.toFixed(1)+' '+y(0).toFixed(1)+' Z':'';
-  // Battery is the missing power between PV and load: shade from the PV curve upward by battery discharge.
+  // Draw only the actual missing-power gap: PV is the lower boundary and
+  // the battery-supported load is the upper boundary, capped at the load.
   const pvBoundary=i=>{if(!hasPv)return 0;const h=startHour+i/2,lo=Math.floor(h),hi=Math.min(23,lo+1),f=h-lo;return Number(hourly[lo]||0)*(1-f)+Number(hourly[hi]||0)*f};
-  let batteryPath='M'+x(0).toFixed(1)+' '+y(pvBoundary(0)).toFixed(1);
-  for(let i=1;i<=intervals;i++)batteryPath+=' L'+x(i).toFixed(1)+' '+y(pvBoundary(i)+batteryCurve[i]).toFixed(1);
-  for(let i=intervals;i>=0;i--)batteryPath+=' L'+x(i).toFixed(1)+' '+y(pvBoundary(i)).toFixed(1);
-  batteryPath+=' Z';
-  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ PV, phụ tải và công suất xả pin từ 6 giờ đến '+endHour+' giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+(household&&hasPv?'<path d="'+batteryPath+'" fill="#2878d0" fill-opacity=".30" stroke="#2878d0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
+  let batteryPath='',batteryTopPath='';
+  for(let i=0;i<intervals;i++){
+   const p0=pvBoundary(i),p1=pvBoundary(i+1),dis=batteryCurve[i];
+   const top0=Math.min(load[i],p0+dis),top1=Math.min(load[i],p1+dis);
+   if(dis>0.001&&Math.max(top0-p0,top1-p1)>0.001){
+    batteryPath+=' M'+x(i).toFixed(1)+' '+y(top0).toFixed(1)+' L'+x(i+1).toFixed(1)+' '+y(top1).toFixed(1)+' L'+x(i+1).toFixed(1)+' '+y(p1).toFixed(1)+' L'+x(i).toFixed(1)+' '+y(p0).toFixed(1)+' Z';
+    batteryTopPath+=(batteryTopPath?' ':'')+'M'+x(i).toFixed(1)+' '+y(top0).toFixed(1)+' L'+x(i+1).toFixed(1)+' '+y(top1).toFixed(1);
+   }
+  }
+  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ PV, phụ tải và công suất xả pin từ 6 giờ đến '+endHour+' giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+(household&&hasPv?'<path d="'+batteryPath+'" fill="#2878d0" fill-opacity=".30" stroke="none"/><path d="'+batteryTopPath+'" fill="none" stroke="#2878d0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div>'+(unit==='%'?'<h3 style="margin:7px 0;color:#16845b;white-space:nowrap">'+value.toFixed(1)+'<span style="font-size:.78em;margin-left:3px">%</span></h3>':'<h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div>')+'</div>';
   let metrics=card('Điện năng phụ tải '+startHour+'–'+endHour,energy,'kWh/ngày')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình '+startHour+'–'+endHour,average,'kW');
   if(hasPv){const loadCoverage=energy>0?selfUse/energy*100:0,pvSelfRate=pvEnergy>0?selfUse/pvEnergy*100:0;metrics+=card('PV trung bình '+startHour+'–'+endHour,pvEnergy,'kWh/ngày')+card('PV tự tiêu thụ',selfUse,'kWh/ngày')+card('Điện lưới cần bổ sung',gridImport,'kWh/ngày')+card('PV dư / có thể sạc vào pin lưu trữ',exportEnergy,'kWh/ngày')+card('Tỷ lệ phụ tải được PV đáp ứng',loadCoverage,'%')+card('Tỷ lệ PV được tự tiêu thụ',pvSelfRate,'%');if(household)metrics+=card('Điện pin xả trong biểu đồ',batteryDischarge,'kWh/ngày')+(batteryExhaustAt!==null?'<div class="gsa-card"><div class="muted">Pin cạn theo mô hình</div><h3 style="margin:7px 0;color:#2878d0">'+batteryExhaustAt.toFixed(1).replace('.',':')+' h</h3><div class="muted">Sau thời điểm này lưới cấp phần thiếu</div></div>':'<div class="gsa-card"><div class="muted">Trạng thái pin lúc 20:00</div><h3 style="margin:7px 0;color:#2878d0">Còn năng lượng</h3><div class="muted">Pin có thể tiếp tục xả sau 20:00</div></div>')}
