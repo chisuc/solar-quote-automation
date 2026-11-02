@@ -211,7 +211,7 @@ function calculateLoadSizing(){
   const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
   if(monthly<=0||days<=0)throw new Error('Nhập tổng điện năng hóa đơn và số ngày hợp lệ.');
   if(dayShare<0||dayShare>100)throw new Error('Tỷ lệ ban ngày phải từ 0 đến 100%.');
-  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,eff=0.90;
+  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,eff=1.00;
   if(nightCoverage<0||nightCoverage>1)throw new Error('Tỷ lệ pin đáp ứng điện ban đêm phải từ 0 đến 100%.');
   const daily=monthly/days,day=daily*dayShare/100,night=daily-day;
   if(psh<=0||pr<=0||dod<=0||eff<=0)throw new Error('Kiểm tra lại các giả định kỹ thuật.');
@@ -223,9 +223,9 @@ function calculateLoadSizing(){
   const totalPvEnergy=pvEnergyForDay+pvEnergyForBattery;
   const pv=totalPvEnergy/(psh*pr);
   const battery=nightSupply/(dod*eff);
-  loadSizingResult={monthlyKwh:monthly,billDays:days,dayShare,nightShare,dailyKwh:daily,dayKwh:day,nightKwh:night,pvCoverage:pvCoverage*100,nightCoverage:nightCoverage*100,psh,pr:pr*100,dod:dod*100,batteryEfficiency:eff*100,pvEnergyForDayKwh:pvEnergyForDay,pvEnergyForBatteryKwh:pvEnergyForBattery,totalPvEnergyKwh:totalPvEnergy,pvKwp:pv,nightSupplyKwh:nightSupply,batteryKwh:battery};
+  loadSizingResult={monthlyKwh:monthly,billDays:days,dayShare,nightShare,dailyKwh:daily,dayKwh:day,nightKwh:night,pvCoverage:pvCoverage*100,nightCoverage:nightCoverage*100,psh,pr:pr*100,dod:dod*100,chargeEfficiency:eff*100,pvEnergyForDayKwh:pvEnergyForDay,pvEnergyForBatteryKwh:pvEnergyForBattery,totalPvEnergyKwh:totalPvEnergy,pvKwp:pv,nightSupplyKwh:nightSupply,batteryKwh:battery};
   $('resDaily').textContent=daily.toFixed(1);$('resDay').textContent=day.toFixed(1);$('resNight').textContent=night.toFixed(1);$('resPv').textContent=pv.toFixed(1);$('resBattery').textContent=battery.toFixed(1);$('resNightSupply').textContent=nightSupply.toFixed(1);
-  $('loadSizingAssumptions').textContent='Tính PV gồm '+pvEnergyForDay.toFixed(1)+' kWh/ngày cấp tải ban ngày và '+pvEnergyForBattery.toFixed(1)+' kWh/ngày để sạc pin; tổng nhu cầu PV '+totalPvEnergy.toFixed(1)+' kWh/ngày. Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; hiệu suất sạc/xả pin '+(eff*100).toFixed(0)+'%; DoD '+(dod*100).toFixed(0)+'%. Đây là sizing sơ bộ theo điện năng trung bình, cần kiểm tra biểu đồ phụ tải 15–30 phút, sản lượng theo mùa và giới hạn inverter trước khi chốt thiết kế.';
+  $('loadSizingAssumptions').textContent='Tính PV gồm '+pvEnergyForDay.toFixed(1)+' kWh/ngày cấp tải ban ngày và '+pvEnergyForBattery.toFixed(1)+' kWh/ngày để sạc pin; tổng nhu cầu PV '+totalPvEnergy.toFixed(1)+' kWh/ngày. Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; hiệu suất sạc pin '+(eff*100).toFixed(0)+'%; DoD '+(dod*100).toFixed(0)+'%. Đây là sizing sơ bộ theo điện năng trung bình, cần kiểm tra biểu đồ phụ tải 15–30 phút, sản lượng theo mùa và giới hạn inverter trước khi chốt thiết kế.';
   $('loadSizingResults').style.display='block';$('loadSizingStatus').textContent='Đã tính toán. Kiểm tra lại dữ liệu hóa đơn và các giả định trước khi áp dụng.';return loadSizingResult;
  }catch(e){$('loadSizingStatus').textContent=e.message;loadSizingResult=null;return null}
 }
