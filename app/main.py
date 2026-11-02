@@ -675,14 +675,18 @@ def _bill_extract_values(text):
         if tm_total:
             total_hint=_bill_number(tm_total.group(1))
             break
-    kwh=sum(tou.values()) if len(tou)==3 else None
-    if kwh is None and total_hint and "normal" in tou and "peak" in tou and "offpeak" not in tou:
+    # The OCR may misread one digit in a TOU row (for example 2.718 as 2.018).
+    # When the invoice's explicit "Tổng:" line exists, it is the authoritative
+    # monthly quantity; do not silently replace it with the sum of noisy rows.
+    tou_sum=sum(tou.values()) if len(tou)==3 else None
+    kwh=total_hint if total_hint and total_hint>0 else tou_sum
+    if total_hint and len(tou)==2 and "normal" in tou and "peak" in tou:
         inferred=total_hint-tou["normal"]-tou["peak"]
         if inferred>=0:
             tou["offpeak"]=inferred
-            kwh=total_hint
-    if kwh is None and total_hint:
-        kwh=total_hint
+    # If no explicit total is printed, fall back to the three recognized TOU values.
+    if kwh is None and tou_sum is not None:
+        kwh=tou_sum
     if kwh is None:
         # EVN VAT invoice form: one line item "Điện tiêu thụ kỳ ...", unit kWh,
         # quantity in the quantity column, then unit price and amount.
@@ -756,7 +760,10 @@ def _bill_extract_values(text):
         mm=re.search(pat,normalized,re.I)
         if mm:
             amount=_bill_number(mm.group(1))
-            if amount and amount>0: break
+            # Reject OCR fragments such as "23,48" captured from a split
+            # thousands-group; an EVN invoice payment total should be > 1 million VND.
+            if amount and amount>=1000000: break
+            amount=None
     if not amount:
         # Search the explicit payment-total line, not the nearby "Tổng số tiền"
         # heading, which can otherwise cause OCR to capture a tariff-table number.
