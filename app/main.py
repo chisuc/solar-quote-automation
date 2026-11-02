@@ -115,7 +115,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='gsa-card'><div class='muted'>Tổng điện năng trung bình</div><h2 id='resDaily' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
 <div class='gsa-card'><div class='muted'>Điện năng ban ngày</div><h2 id='resDay' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
 <div class='gsa-card'><div class='muted'>Điện năng ban đêm</div><h2 id='resNight' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
-<div class='gsa-card'><div class='muted'>Công suất PV đề xuất</div><h2 id='resPv' style='margin:7px 0;color:#16845b'>—</h2><div class='muted'>kWp DC</div></div>
+<div class='gsa-card'><div class='muted'>Công suất PV đề xuất</div><h2 id='resPv' style='margin:7px 0;color:#16845b'>—</h2><div class='muted'>kWp DC · công suất mục tiêu</div><div id='resPvModules' style='font-size:12px;margin-top:8px;line-height:1.6'></div></div>
 <div class='gsa-card'><div class='muted'>Dung lượng pin đề xuất</div><h2 id='resBattery' style='margin:7px 0;color:#16845b'>—</h2><div class='muted'>kWh danh định</div></div>
 <div class='gsa-card'><div class='muted'>Điện năng cần pin cấp ban đêm</div><h2 id='resNightSupply' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
 </div>
@@ -218,7 +218,7 @@ function syncQuoteAuto(){
  ['self','vat'].forEach(id=>{const cb=$('auto_'+id);if(cb&&cb.checked){const def=id==='self'?80:8;$(id).value=def}});
  calc();
 }
-function calc(){let kw=n('panelW')*n('panelQty')/1000,v=n('pre')*n('vat')/100;$('pv').value=kw.toFixed(3);$('batTotal').value=(n('batKwh')*n('batQty')).toFixed(2);if($('auto_vatMoney').checked)$('vatMoney').value=v.toFixed(0);if($('auto_grand').checked)$('grand').value=(n('pre')+v).toFixed(0)}
+function calc(){let kw=n('panelW')*n('panelQty')/1000,v=n('pre')*n('vat')/100;$('pv').value=kw.toFixed(3);if(loadSizingResult&&$('resPvModules'))updatePvModuleRecommendation(loadSizingResult.pvKwp);$('batTotal').value=(n('batKwh')*n('batQty')).toFixed(2);if($('auto_vatMoney').checked)$('vatMoney').value=v.toFixed(0);if($('auto_grand').checked)$('grand').value=(n('pre')+v).toFixed(0)}
 document.addEventListener('input',e=>{if(e.target.tagName==='INPUT'){if(['billMonthKwh','billAveragePrice','vat'].includes(e.target.id))syncQuoteAuto();else calc()}});
 let financialOverrides={};
 const financialFields={finInflation:'inflation',finElectricityEscalation:'electricityEscalation',finSelfConsumption:'selfConsumption',finLoanRatio:'loanRatio',finLoanTerm:'loanTerm',finLoanRate:'loanRate',finDepreciation:'depreciationYears',finOperatingCost:'operatingCost'};
@@ -290,6 +290,22 @@ function calculateResidentialBill(){
   $('billAveragePrice').value=(amount/kwh).toFixed(2);syncQuoteAuto();
  }catch(e){$('residentialBillResult').textContent=e.message}
 }
+function updatePvModuleRecommendation(targetKwp){
+ const box=$('resPvModules');if(!box)return;
+ const wp=n('panelW')||625;
+ if(!(targetKwp>0)||!(wp>0)){box.textContent='Nhập công suất tấm pin hợp lệ để quy đổi số lượng tấm.';return}
+ const exact=targetKwp*1000/wp,low=Math.max(1,Math.floor(exact)),high=Math.max(1,Math.ceil(exact));
+ const actualLow=low*wp/1000,actualHigh=high*wp/1000;
+ const fmt=x=>Number(x).toLocaleString('vi-VN',{maximumFractionDigits:3});
+ const option=(count,kwp,label)=>'<button type="button" class="btn alt" style="padding:5px 8px;font-size:11px;margin:3px 4px 0 0" onclick="choosePvModuleCount('+count+')">Chọn '+count+' tấm · '+fmt(kwp)+' kWp'+(label?' ('+label+')':'')+'</button>';
+ box.innerHTML='Với tấm '+wp+' Wp: cần khoảng '+exact.toFixed(2)+' tấm. Công suất thực tế theo số tấm nguyên:<br>'+option(low,actualLow,'thấp hơn mục tiêu')+(high!==low?option(high,actualHigh,'đạt/vượt mục tiêu'):'')+'<div class="muted" style="margin-top:4px">Chọn số tấm phù hợp; công suất lắp đặt sẽ được cập nhật theo số tấm thực tế.</div>';
+}
+function choosePvModuleCount(count){
+ $('panelQty').value=count;calc();
+ const actual=n('pv');
+ $('pvSystemSize').value=actual.toFixed(3);
+ $('loadSizingStatus').textContent='Đã chọn '+count+' tấm PV, tổng công suất lắp đặt '+actual.toFixed(3)+' kWp DC. Nếu muốn PVWatts mô phỏng theo công suất thực tế này, hãy bấm Tính toán PVWatts lại.';
+}
 function calculateLoadSizing(){
  try{
   const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
@@ -308,7 +324,7 @@ function calculateLoadSizing(){
   const pv=totalPvEnergy/(psh*pr);
   const battery=nightSupply/(dod*eff);
   loadSizingResult={monthlyKwh:monthly,billDays:days,dayShare,nightShare,dailyKwh:daily,dayKwh:day,nightKwh:night,pvCoverage:pvCoverage*100,nightCoverage:nightCoverage*100,psh,pr:pr*100,dod:dod*100,chargeEfficiency:eff*100,pvEnergyForDayKwh:pvEnergyForDay,pvEnergyForBatteryKwh:pvEnergyForBattery,totalPvEnergyKwh:totalPvEnergy,pvKwp:pv,nightSupplyKwh:nightSupply,batteryKwh:battery};
-  $('resDaily').textContent=daily.toFixed(1);$('resDay').textContent=day.toFixed(1);$('resNight').textContent=night.toFixed(1);$('resPv').textContent=pv.toFixed(1);$('resBattery').textContent=battery.toFixed(1);$('resNightSupply').textContent=nightSupply.toFixed(1);
+  $('resDaily').textContent=daily.toFixed(1);$('resDay').textContent=day.toFixed(1);$('resNight').textContent=night.toFixed(1);$('resPv').textContent=pv.toFixed(1);updatePvModuleRecommendation(pv);$('resBattery').textContent=battery.toFixed(1);$('resNightSupply').textContent=nightSupply.toFixed(1);
   $('loadSizingAssumptions').textContent='Tính PV gồm '+pvEnergyForDay.toFixed(1)+' kWh/ngày cấp tải ban ngày và '+pvEnergyForBattery.toFixed(1)+' kWh/ngày để sạc pin; tổng nhu cầu PV '+totalPvEnergy.toFixed(1)+' kWh/ngày. Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; hiệu suất sạc pin '+(eff*100).toFixed(0)+'%; DoD '+(dod*100).toFixed(0)+'%. Đây là sizing sơ bộ theo điện năng trung bình, cần kiểm tra biểu đồ phụ tải 15–30 phút, sản lượng theo mùa và giới hạn inverter trước khi chốt thiết kế.';
   $('loadSizingResults').style.display='block';$('loadSizingStatus').textContent='Đã tính toán. Kiểm tra lại dữ liệu hóa đơn và các giả định trước khi áp dụng.';return loadSizingResult;
  }catch(e){$('loadSizingStatus').textContent=e.message;loadSizingResult=null;return null}
@@ -327,7 +343,7 @@ function calculateTargetBatteryPv(){
   const dod=base.dod/100;
   if(dod<=0)throw Error('DoD phải lớn hơn 0%.');
   const batteryNominal=target/dod;
-  targetBatteryPvResult={...base,pvCoverage:dayCoverage,pvEnergyForDayKwh:pvDay,pvEnergyForBatteryKwh:pvCharge,totalPvEnergyKwh:totalPvEnergy,pvKwp,batteryKwh:batteryNominal,nightSupplyKwh:target};
+  targetBatteryPvResult={...base,pvCoverage:dayCoverage,pvEnergyForDayKwh:pvDay,pvEnergyForBatteryKwh:pvCharge,totalPvEnergyKwh:totalPvEnergy,pvKwp,batteryKwh:batteryNominal,nightSupplyKwh:target};updatePvModuleRecommendation(pvKwp);
   $('targetBatteryPvResult').innerHTML='<strong>PV đề xuất: '+pvKwp.toFixed(1)+' kWp DC</strong><br>Dung lượng pin danh định: '+batteryNominal.toFixed(1)+' kWh<br>PV cấp tải ban ngày: '+pvDay.toFixed(1)+' kWh/ngày · Nạp pin: '+pvCharge.toFixed(1)+' kWh/ngày · Tổng PV: '+totalPvEnergy.toFixed(1)+' kWh/ngày<br><small>Giả định PSH '+base.psh.toFixed(1)+' giờ/ngày, PR '+base.pr.toFixed(0)+'%, hiệu suất sạc 100%, DoD '+base.dod.toFixed(0)+'%.</small>';
   return targetBatteryPvResult;
  }catch(e){$('targetBatteryPvResult').textContent=e.message;targetBatteryPvResult=null;return null}
@@ -527,7 +543,7 @@ function applyLoadSizing(){
   const r=loadSizingResult||calculateLoadSizing();
   if(!r)return;
   $('load').value=Number(r.monthlyKwh.toFixed(2));
-  const panelW=n('panelW')||625;$('panelQty').value=Math.ceil(r.pvKwp*1000/panelW);
+  const panelW=n('panelW')||625;$('panelQty').value=Math.max(1,Math.round(r.pvKwp*1000/panelW));
   $('batKwh').value=r.batteryKwh.toFixed(1);$('batQty').value=1;
   $('usagePattern').value='Tỷ lệ tiêu thụ ban ngày '+r.dayShare.toFixed(1)+'%, ban đêm '+r.nightShare.toFixed(1)+'%; điện năng trung bình ban ngày '+r.dayKwh.toFixed(1)+' kWh/ngày, ban đêm '+r.nightKwh.toFixed(1)+' kWh/ngày.';
   calc();$('loadSizingStatus').textContent='Đã áp dụng điện năng tháng, số lượng tấm PV dự kiến và dung lượng pin vào cấu hình. Hãy kiểm tra và lưu dự án.';
