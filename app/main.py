@@ -395,30 +395,30 @@ async function billFileToCanvas(file){
  const url=URL.createObjectURL(file);
  try{
   const img=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>reject(Error('Không mở được ảnh hóa đơn.'));im.src=url});
-  const scale=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight));
+  const scale=Math.min(1,2600/Math.max(img.naturalWidth,img.naturalHeight));
   const canvas=document.createElement('canvas');canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);
   canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas;
  }finally{URL.revokeObjectURL(url)}
 }
 async function ocrBillInBrowser(file){
  const worker=await getBillOcrWorker(),canvas=await billFileToCanvas(file),w=canvas.width,h=canvas.height;
- const boxes=[[.05,.02,.66,.36],[.07,.26,.57,.57],[.04,.65,.65,.999]];
  const outputs=[];
+ // Always OCR the complete invoice: the old crop-only path could miss the
+ // payment total or a TOU row when the supplier changed the bill layout.
+ await worker.setParameters({tessedit_pageseg_mode:'11',preserve_interword_spaces:'1'});
+ const full=await worker.recognize(canvas);
+ outputs.push('=== OCR TOÀN TRANG ===\\n'+(full.data.text||''));
+ // Then OCR the likely table/header regions at their native resolution.
+ await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+ const boxes=[[.02,.02,.98,.48],[.02,.28,.98,.78],[.02,.58,.98,.99]];
  for(let i=0;i<boxes.length;i++){
   const [x1,y1,x2,y2]=boxes[i],crop=document.createElement('canvas');
   crop.width=Math.max(1,Math.round((x2-x1)*w));crop.height=Math.max(1,Math.round((y2-y1)*h));
   crop.getContext('2d').drawImage(canvas,Math.round(x1*w),Math.round(y1*h),crop.width,crop.height,0,0,crop.width,crop.height);
   const result=await worker.recognize(crop,{rotateAuto:true});
-  outputs.push(result.data.text||'');
+  outputs.push('=== VÙNG '+(i+1)+' ===\\n'+(result.data.text||''));
  }
- let combined=outputs.join('\\n');
- if(combined.trim().length<100){
-  await worker.setParameters({tessedit_pageseg_mode:'11'});
-  const full=await worker.recognize(canvas);
-  if((full.data.text||'').trim().length>combined.trim().length)combined=full.data.text||combined;
-  await worker.setParameters({tessedit_pageseg_mode:'6'});
- }
- return combined;
+ return outputs.join('\\n');
 }
 async function readBills(){
  const files=[...$('billFiles').files];
@@ -680,10 +680,11 @@ def _bill_extract_values(text):
     # monthly quantity; do not silently replace it with the sum of noisy rows.
     tou_sum=sum(tou.values()) if len(tou)==3 else None
     kwh=total_hint if total_hint and total_hint>0 else tou_sum
-    if total_hint and len(tou)==2 and "normal" in tou and "peak" in tou:
-        inferred=total_hint-tou["normal"]-tou["peak"]
-        if inferred>=0:
-            tou["offpeak"]=inferred
+    if total_hint and len(tou)==2:
+        missing=({"normal","peak","offpeak"}-set(tou))
+        inferred=total_hint-sum(tou.values())
+        if len(missing)==1 and inferred>=0:
+            tou[next(iter(missing))]=inferred
     # If no explicit total is printed, fall back to the three recognized TOU values.
     if kwh is None and tou_sum is not None:
         kwh=tou_sum
