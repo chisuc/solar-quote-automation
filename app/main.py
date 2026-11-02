@@ -94,6 +94,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Giá điện trung bình (đ/kWh)</label><input id='billAveragePrice' type='number' readonly placeholder='Tự tính từ tổng tiền / tổng kWh'></div>
 <div class='field'><label>Tỷ lệ tiêu thụ ban ngày (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
 <div class='field'><label>Tỷ lệ tiêu thụ ban đêm (%)</label><input id='billNightShare' type='number' readonly value='35'></div>
+<div class='field'><label>Tỷ lệ pin đáp ứng điện ban đêm (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='100'><small class='muted'>Mặc định 100%; có thể giảm xuống 70–90% tùy mục tiêu đầu tư.</small></div>
 <div class='field'><label>Số giờ nắng đỉnh PSH (h/ngày)</label><input id='billPsh' type='number' min='.5' max='8' step='.1' value='4'></div>
 <div class='field'><label>Độ sâu xả pin DoD (%)</label><input id='billDod' type='number' min='50' max='100' step='1' value='90'></div>
 </div>
@@ -210,8 +211,9 @@ function calculateLoadSizing(){
   const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
   if(monthly<=0||days<=0)throw new Error('Nhập tổng điện năng hóa đơn và số ngày hợp lệ.');
   if(dayShare<0||dayShare>100)throw new Error('Tỷ lệ ban ngày phải từ 0 đến 100%.');
+  if(nightCoverage<0||nightCoverage>1)throw new Error('Tỷ lệ pin đáp ứng điện ban đêm phải từ 0 đến 100%.');
   const daily=monthly/days,day=daily*dayShare/100,night=daily-day;
-  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=0.70,dod=n('billDod')/100,eff=0.90;
+  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,eff=0.90;
   if(psh<=0||pr<=0||dod<=0||eff<=0)throw new Error('Kiểm tra lại các giả định kỹ thuật.');
   const nightSupply=night*nightCoverage;
   // PV must cover the selected daytime load AND the energy needed to recharge the battery.
