@@ -92,6 +92,16 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
 <div class='field'><label>Sản lượng trung bình (kWh/ngày)</label><input id='billDailyAverage' type='number' readonly placeholder='Tự tính từ tổng kWh / số ngày'></div>
 <div class='field'><label>Giá điện trung bình (đ/kWh)</label><input id='billAveragePrice' type='number' readonly placeholder='Tự tính từ tổng tiền / tổng kWh'></div>
+<div style='grid-column:1/-1;border:1px solid #cbded4;border-radius:10px;padding:14px;background:#fbfdfc;margin:4px 0'>
+<h3 style='margin:0 0 6px'>Quy đổi tiền điện sinh hoạt thành sản lượng theo 6 bậc</h3>
+<p class='muted' style='margin:0 0 10px'>Nhập tổng tiền điện sinh hoạt. Công cụ tính ngược số kWh theo biểu giá 6 bậc bạn cung cấp (đơn giá chưa VAT 8%).</p>
+<div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));gap:10px'>
+<div class='field'><label>Tổng tiền điện (đồng)</label><input id='residentialBillAmount' type='number' min='0' step='1000' placeholder='Ví dụ: 1500000'></div>
+<div class='field'><label style='display:flex;align-items:center;gap:8px'><input id='residentialVatIncluded' type='checkbox' checked style='width:auto'> Số tiền đã bao gồm VAT 8%</label><small class='muted'>Bỏ chọn nếu số tiền nhập chưa VAT.</small></div>
+</div>
+<button class='btn' type='button' onclick='calculateResidentialBill()'>Tính số điện theo 6 bậc</button>
+<div id='residentialBillResult' class='muted' style='margin-top:10px'>Chưa tính tiền điện sinh hoạt.</div>
+</div>
 <div class='field'><label>Tỷ lệ tiêu thụ 00:00–18:00 (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
 <div class='field'><label>Tỷ lệ tiêu thụ 18:00–24:00 (%)</label><input id='billNightShare' type='number' readonly value='35'></div>
 <div class='field'><label>Tỷ lệ pin đáp ứng điện ban đêm (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='100'><small class='muted'>Mặc định 100%; có thể giảm xuống 70–90% tùy mục tiêu đầu tư.</small></div>
@@ -225,6 +235,37 @@ async function runPVWatts(){try{if(!parseCoordinates())throw Error('Vui lòng ki
 
 let loadSizingResult=null;
 function calcBillNightShare(){let d=Math.max(0,Math.min(100,n('billDayShare')));$('billNightShare').value=(100-d).toFixed(1);if($('billNightShare').value.endsWith('.0'))$('billNightShare').value=(100-d).toFixed(0)}
+function calculateResidentialBill(){
+ try{
+  const amount=Number($('residentialBillAmount').value);
+  if(!Number.isFinite(amount)||amount<=0)throw Error('Nhập tổng tiền điện lớn hơn 0.');
+  const vatIncluded=$('residentialVatIncluded').checked;
+  const beforeVat=vatIncluded?amount/1.08:amount;
+  const tiers=[
+   {name:'Bậc 1',limit:50,rate:1984},
+   {name:'Bậc 2',limit:50,rate:2050},
+   {name:'Bậc 3',limit:100,rate:2380},
+   {name:'Bậc 4',limit:100,rate:2998},
+   {name:'Bậc 5',limit:100,rate:3350},
+   {name:'Bậc 6',limit:Infinity,rate:3460}
+  ];
+  let remaining=beforeVat,kwh=0,html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px">Bậc</th><th style="text-align:right;padding:6px">Đơn giá</th><th style="text-align:right;padding:6px">Sản lượng</th><th style="text-align:right;padding:6px">Thành tiền</th></tr></thead><tbody>';
+  tiers.forEach(t=>{
+   const available=t.limit===Infinity?Infinity:t.limit;
+   const costForTier=available===Infinity?remaining:available*t.rate;
+   const spend=Math.min(remaining,costForTier);
+   const units=spend/t.rate;
+   html+='<tr><td style="padding:6px;border-top:1px solid #e2eae5">'+t.name+'</td><td style="padding:6px;text-align:right;border-top:1px solid #e2eae5">'+t.rate.toLocaleString('vi-VN')+'</td><td style="padding:6px;text-align:right;border-top:1px solid #e2eae5">'+units.toFixed(2)+'</td><td style="padding:6px;text-align:right;border-top:1px solid #e2eae5">'+spend.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</td></tr>';
+   kwh+=units;remaining-=spend;
+  });
+  const vat=beforeVat*.08,total=beforeVat+vat,daily=Number($('billDays').value)>0?kwh/Number($('billDays').value):0;
+  html+='</tbody></table></div><div class="grid" style="margin-top:10px"><div class="gsa-card"><div class="muted">Tổng sản lượng ước tính</div><h2>'+kwh.toFixed(2)+'</h2><div class="muted">kWh</div></div><div class="gsa-card"><div class="muted">Tiền trước VAT</div><h2>'+beforeVat.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</h2><div class="muted">đồng</div></div><div class="gsa-card"><div class="muted">VAT 8%</div><h2>'+vat.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</h2><div class="muted">đồng</div></div></div>';
+  $('residentialBillResult').innerHTML=html+'<p class="muted">Kết quả là ước tính theo đúng biểu giá 6 bậc đã nhập; giả định toàn bộ số tiền chỉ gồm tiền điện bậc thang và VAT 8%, chưa tính các khoản điều chỉnh khác nếu có.</p>';
+  $('billMonthKwh').value=kwh.toFixed(2);
+  $('billDailyAverage').value=Number($('billDays').value)>0?daily.toFixed(2):'';
+  $('billAveragePrice').value=(amount/kwh).toFixed(2);
+ }catch(e){$('residentialBillResult').textContent=e.message}
+}
 function calculateLoadSizing(){
  try{
   const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
