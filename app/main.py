@@ -374,10 +374,10 @@ function drawLoadPvComparison(){
   loadProfileTimes.forEach((t,i)=>{if(i%2===0||i===22)labels+='<text x="'+x(i)+'" y="'+(H-13)+'" text-anchor="middle" fill="#52665d" font-size="11">'+t+'</text>'});
   let step='M'+x(0).toFixed(1)+' '+y(load[0]).toFixed(1);
   for(let i=1;i<load.length;i++)step+=' L'+x(i).toFixed(1)+' '+y(load[i-1]).toFixed(1)+' L'+x(i).toFixed(1)+' '+y(load[i]).toFixed(1);
-  let pvSmooth='';
+  let pvSmooth='',pts=[];
   if(hasPv){
    // Plot the 12 hourly-average PV points and use cubic interpolation for a smooth daytime production curve.
-   const pts=hourly.slice(6,18).map((v,i)=>({x:x(i*2),y:y(Number(v||0))}));
+   pts=hourly.slice(6,18).map((v,i)=>({x:x(i*2),y:y(Number(v||0))}));
    pvSmooth='M'+pts[0].x.toFixed(1)+' '+pts[0].y.toFixed(1);
    for(let i=0;i<pts.length-1;i++){
     const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(pts.length-1,i+2)];
@@ -386,7 +386,7 @@ function drawLoadPvComparison(){
     pvSmooth+=' C'+c1x.toFixed(1)+' '+c1y.toFixed(1)+','+c2x.toFixed(1)+' '+c2y.toFixed(1)+','+p2.x.toFixed(1)+' '+p2.y.toFixed(1);
    }
   }
-  const pvArea=hasPv?pvSmooth+' L'+pts[pts.length-1].x.toFixed(1)+' '+y(0).toFixed(1)+' L'+pts[0].x.toFixed(1)+' '+y(0).toFixed(1)+' Z':'';
+  const pvArea=hasPv&&pts.length===12?pvSmooth+' L'+pts[pts.length-1].x.toFixed(1)+' '+y(0).toFixed(1)+' L'+pts[0].x.toFixed(1)+' '+y(0).toFixed(1)+' Z':'';
   $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ miền sản lượng PV màu xanh và đường phụ tải nhà máy màu đỏ từ 6 giờ đến 17 giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div><h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div></div>';
   let metrics=card('Điện năng phụ tải 06–17',energy,'kWh/ngày')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình 06–17',average,'kW');
