@@ -211,9 +211,9 @@ function calculateLoadSizing(){
   const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
   if(monthly<=0||days<=0)throw new Error('Nhập tổng điện năng hóa đơn và số ngày hợp lệ.');
   if(dayShare<0||dayShare>100)throw new Error('Tỷ lệ ban ngày phải từ 0 đến 100%.');
+  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,eff=0.90;
   if(nightCoverage<0||nightCoverage>1)throw new Error('Tỷ lệ pin đáp ứng điện ban đêm phải từ 0 đến 100%.');
   const daily=monthly/days,day=daily*dayShare/100,night=daily-day;
-  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,eff=0.90;
   if(psh<=0||pr<=0||dod<=0||eff<=0)throw new Error('Kiểm tra lại các giả định kỹ thuật.');
   const nightSupply=night*nightCoverage;
   // PV must cover the selected daytime load AND the energy needed to recharge the battery.
