@@ -366,8 +366,7 @@ function updateBillManual(index,key,value,subkey){
 }
 function billEditInput(index,key,value,step='1',subkey){
  const v=value===undefined||value===null?'':String(value);
- const subkeyArg=subkey?",'"+subkey+"'":"";
- return '<input type="number" min="0" step="'+step+'" value="'+esc(v)+'" aria-label="Nhập tay '+key+'" onchange="updateBillManual('+index+',\\''+key+'\\',this.value'+(subkey?",\\'"+subkey+"\\'":"")+')" style="width:86px;min-width:66px;padding:5px;border:1px solid #9bb9aa;border-radius:5px;background:#fff">';
+ return '<input type="number" min="0" step="'+step+'" value="'+esc(v)+'" aria-label="Nhập tay '+key+'" onchange="updateBillManual('+index+',&quot;'+key+'&quot;,this.value'+(subkey?',&quot;'+subkey+'&quot;':'')+')" style="width:86px;min-width:66px;padding:5px;border:1px solid #9bb9aa;border-radius:5px;background:#fff">';
 }
 function renderBillBatch(){
  const rows=billBatchResults;const seen=new Map();
