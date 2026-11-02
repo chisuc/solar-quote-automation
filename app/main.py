@@ -791,7 +791,7 @@ def _bill_extract_values(text):
             continue
         if not in_meter_section:
             continue
-        if re.search(r"tong\\s*:",plain_line):
+        if re.search(r"tong\s*:",plain_line):
             break
         key=None
         if "khung gio binh thuong" in plain_line: key="normal"
@@ -799,7 +799,7 @@ def _bill_extract_values(text):
         elif "khung gio thap diem" in plain_line: key="offpeak"
         if key:
             pending_key=key
-        values=re.findall(r"\\d[\\d.,]*",line)
+        values=re.findall(r"\d[\d.,]*",line)
         # Meter rows contain multiplier, new index, old index, consumption.
         # Wrapped removal dates (e.g. 26/03/2026) are skipped until the
         # following numeric row supplies all four fields.
