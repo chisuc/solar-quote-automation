@@ -110,6 +110,16 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='gsa-card'><div class='muted'>Điện năng cần pin cấp ban đêm</div><h2 id='resNightSupply' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
 </div>
 <p class='muted' id='loadSizingAssumptions' style='margin-top:10px'></p>
+<div style='border:1px solid #cbded4;border-radius:10px;padding:14px;margin-top:14px;background:#fbfdfc'>
+<h3 style='margin:0 0 6px'>Tùy chọn dung lượng pin mục tiêu</h3>
+<p class='muted' style='margin:0 0 10px'>Nhập điện năng bạn muốn nạp vào pin mỗi ngày (kWh). Website sẽ tính ngược công suất PV, đồng thời tính dung lượng pin danh định theo DoD.</p>
+<div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));gap:10px'>
+<div class='field'><label>Điện năng muốn nạp vào pin mỗi ngày (kWh)</label><input id='targetBatteryDailyKwh' type='number' min='0' step='0.1' placeholder='Ví dụ: 100'></div>
+<div class='field'><label>PV cấp tải ban ngày (%)</label><input id='targetPvDayCoverage' type='number' min='0' max='100' step='1' value='80'></div>
+</div>
+<div class='row' style='margin-top:8px'><button class='btn' type='button' onclick='calculateTargetBatteryPv()'>Tính PV theo pin mục tiêu</button><button class='btn alt' type='button' onclick='applyTargetBatteryPv()'>Áp dụng phương án này</button></div>
+<div id='targetBatteryPvResult' class='muted' style='margin-top:10px'>Chưa tính phương án pin mục tiêu.</div>
+</div>
 <div style='border-top:1px solid #e2eae5;margin-top:16px;padding-top:14px'>
 <h3 style='margin:0 0 6px'>Biểu đồ phụ tải nhà máy (06:00–17:00)</h3>
 <p class='muted'>Dùng cho hóa đơn sản xuất/kinh doanh có đủ 3 khung giờ. Website phân bổ kWh theo lịch giờ điện, ngày làm việc và ca sản xuất để ước tính đường phụ tải; không thể khôi phục chính xác biểu đồ đo thực tế chỉ từ hóa đơn.</p>
@@ -229,6 +239,30 @@ function calculateLoadSizing(){
   $('loadSizingAssumptions').textContent='Tính PV gồm '+pvEnergyForDay.toFixed(1)+' kWh/ngày cấp tải ban ngày và '+pvEnergyForBattery.toFixed(1)+' kWh/ngày để sạc pin; tổng nhu cầu PV '+totalPvEnergy.toFixed(1)+' kWh/ngày. Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; hiệu suất sạc pin '+(eff*100).toFixed(0)+'%; DoD '+(dod*100).toFixed(0)+'%. Đây là sizing sơ bộ theo điện năng trung bình, cần kiểm tra biểu đồ phụ tải 15–30 phút, sản lượng theo mùa và giới hạn inverter trước khi chốt thiết kế.';
   $('loadSizingResults').style.display='block';$('loadSizingStatus').textContent='Đã tính toán. Kiểm tra lại dữ liệu hóa đơn và các giả định trước khi áp dụng.';return loadSizingResult;
  }catch(e){$('loadSizingStatus').textContent=e.message;loadSizingResult=null;return null}
+}
+let targetBatteryPvResult=null;
+function calculateTargetBatteryPv(){
+ try{
+  if(!loadSizingResult&&!calculateLoadSizing())return null;
+  const target=Number($('targetBatteryDailyKwh').value),dayCoverage=Number($('targetPvDayCoverage').value),base=loadSizingResult;
+  if(!Number.isFinite(target)||target<0)throw Error('Nhập điện năng muốn nạp vào pin mỗi ngày hợp lệ.');
+  if(!Number.isFinite(dayCoverage)||dayCoverage<0||dayCoverage>100)throw Error('Tỷ lệ PV cấp tải ban ngày phải từ 0 đến 100%.');
+  const pvDay=base.dayKwh*dayCoverage/100;
+  const pvCharge=target; // Charging efficiency is fixed at 100%.
+  const totalPvEnergy=pvDay+pvCharge;
+  const pvKwp=totalPvEnergy/(base.psh*(base.pr/100));
+  const dod=base.dod/100;
+  if(dod<=0)throw Error('DoD phải lớn hơn 0%.');
+  const batteryNominal=target/dod;
+  targetBatteryPvResult={...base,pvCoverage:dayCoverage,pvEnergyForDayKwh:pvDay,pvEnergyForBatteryKwh:pvCharge,totalPvEnergyKwh:totalPvEnergy,pvKwp,batteryKwh:batteryNominal,nightSupplyKwh:target};
+  $('targetBatteryPvResult').innerHTML='<strong>PV đề xuất: '+pvKwp.toFixed(1)+' kWp DC</strong><br>Dung lượng pin danh định: '+batteryNominal.toFixed(1)+' kWh<br>PV cấp tải ban ngày: '+pvDay.toFixed(1)+' kWh/ngày · Nạp pin: '+pvCharge.toFixed(1)+' kWh/ngày · Tổng PV: '+totalPvEnergy.toFixed(1)+' kWh/ngày<br><small>Giả định PSH '+base.psh.toFixed(1)+' giờ/ngày, PR '+base.pr.toFixed(0)+'%, hiệu suất sạc 100%, DoD '+base.dod.toFixed(0)+'%.</small>';
+  return targetBatteryPvResult;
+ }catch(e){$('targetBatteryPvResult').textContent=e.message;targetBatteryPvResult=null;return null}
+}
+function applyTargetBatteryPv(){
+ const r=calculateTargetBatteryPv();if(!r)return;
+ loadSizingResult=r;applyLoadSizing();
+ $('loadSizingStatus').textContent='Đã áp dụng phương án PV theo dung lượng pin mục tiêu. Kiểm tra cấu hình inverter và lưu dự án.';
 }
 const loadProfileTimes=Array.from({length:23},(_,i)=>{const mins=360+i*30;return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0')});
 function updateTouScheduleDescription(){
