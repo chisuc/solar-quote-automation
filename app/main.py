@@ -374,9 +374,19 @@ function drawLoadPvComparison(){
   loadProfileTimes.forEach((t,i)=>{if(i%2===0||i===22)labels+='<text x="'+x(i)+'" y="'+(H-13)+'" text-anchor="middle" fill="#52665d" font-size="11">'+t+'</text>'});
   let step='M'+x(0).toFixed(1)+' '+y(load[0]).toFixed(1);
   for(let i=1;i<load.length;i++)step+=' L'+x(i).toFixed(1)+' '+y(load[i-1]).toFixed(1)+' L'+x(i).toFixed(1)+' '+y(load[i]).toFixed(1);
-  let pvStep='';
-  if(hasPv){pvStep='M'+x(0).toFixed(1)+' '+y(pvAt(0)).toFixed(1);for(let i=1;i<23;i++)pvStep+=' L'+x(i).toFixed(1)+' '+y(pvAt(i)).toFixed(1)}
-  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="So sánh phụ tải nhà máy và sản lượng PV trung bình theo giờ từ 6 giờ đến 17 giờ">'+grid+(hasPv?'<path d="'+pvStep+'" fill="none" stroke="#e3a12b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#16845b" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
+  let pvSmooth='';
+  if(hasPv){
+   // Plot the 12 hourly-average PV points and use cubic interpolation for a smooth daytime production curve.
+   const pts=hourly.slice(6,18).map((v,i)=>({x:x(i*2),y:y(Number(v||0))}));
+   pvSmooth='M'+pts[0].x.toFixed(1)+' '+pts[0].y.toFixed(1);
+   for(let i=0;i<pts.length-1;i++){
+    const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(pts.length-1,i+2)];
+    const c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;
+    pvSmooth+=' C'+c1x.toFixed(1)+' '+c1y.toFixed(1)+','+c2x.toFixed(1)+' '+c2y.toFixed(1)+','+p2.x.toFixed(1)+' '+p2.y.toFixed(1);
+   }
+  }
+  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="So sánh phụ tải nhà máy và đường cong sản lượng PV trung bình theo giờ từ 6 giờ đến 17 giờ">'+grid+(hasPv?'<path d="'+pvSmooth+'" fill="none" stroke="#e3a12b" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#16845b" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div><h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div></div>';
   let metrics=card('Điện năng phụ tải 06–17',energy,'kWh/ngày')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình 06–17',average,'kW');
   if(hasPv){const loadCoverage=energy>0?selfUse/energy*100:0,pvSelfRate=pvEnergy>0?selfUse/pvEnergy*100:0;metrics+=card('PV trung bình 06–17',pvEnergy,'kWh/ngày')+card('PV tự tiêu thụ',selfUse,'kWh/ngày')+card('Điện lưới cần bổ sung',gridImport,'kWh/ngày')+card('Điện PV dư',exportEnergy,'kWh/ngày')+card('Tỷ lệ phụ tải được PV đáp ứng',loadCoverage,'%')+card('Tỷ lệ PV được tự tiêu thụ',pvSelfRate,'%')}
