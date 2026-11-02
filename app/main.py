@@ -121,14 +121,17 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div id='targetBatteryPvResult' class='muted' style='margin-top:10px'>Chưa tính phương án pin mục tiêu.</div>
 </div>
 <div style='border-top:1px solid #e2eae5;margin-top:16px;padding-top:14px'>
-<h3 style='margin:0 0 6px'>Biểu đồ phụ tải nhà máy (06:00–17:00)</h3>
-<p class='muted'>Dùng cho hóa đơn sản xuất/kinh doanh có đủ 3 khung giờ. Website phân bổ kWh theo lịch giờ điện, ngày làm việc và ca sản xuất để ước tính đường phụ tải; không thể khôi phục chính xác biểu đồ đo thực tế chỉ từ hóa đơn.</p>
+<h3 style='margin:0 0 6px'>Biểu đồ phụ tải (06:00–17:00)</h3>
+<p class='muted'>Chọn loại phụ tải để website áp dụng mô hình phù hợp: hộ dân dùng điện 24/24 với tỷ lệ ngày/đêm; nhà máy dùng lịch ca, ngày hoạt động và nghỉ trưa.</p>
+<div class='field' style='max-width:520px;margin:10px 0'><label>Loại phụ tải</label><select id='loadCustomerMode' onchange='toggleLoadCustomerMode()'><option value='household'>1. Hộ dân</option><option value='factory' selected>2. Nhà máy</option></select></div>
+<div id='householdLoadInfo' class='muted' style='display:none;margin:8px 0 12px'>Hộ dân được giả định sử dụng điện liên tục 24/24. Website phân bổ tổng điện năng theo tỷ lệ tiêu thụ ban ngày và ban đêm ở phần thông tin hóa đơn; đường phụ tải ban ngày 06:00–17:00 được giả định phẳng. Không áp dụng lịch ca hoặc nghỉ trưa.</div>
+<div id='factoryLoadFields'>
 <div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));margin:10px 0'>
 <div class='field'><label>Khung giờ tính toán</label><select id='touScheduleMode'><option value='old'>KHUNG GIỜ CŨ</option><option value='new'>KHUNG GIỜ MỚI</option></select></div>
 <div class='field' style='align-self:end'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo đường phụ tải từ kWh hóa đơn</button></div>
 </div>
 <div class='muted' id='touScheduleDescription' style='margin:6px 0 12px'></div>
-<h4 style='margin:12px 0 8px'>Chế độ phụ tải</h4>
+<h4 style='margin:12px 0 8px'>Chế độ phụ tải nhà máy</h4>
 <div class='field' style='max-width:520px'><label>Kiểu vận hành</label><select id='plantLoadMode' onchange='togglePlantScheduleMode()'><option value='shift' selected>Theo lịch ca / có tải thay đổi theo giờ</option><option value='continuous'>Chạy liên tục 24/7, phụ tải ngày đêm như nhau</option></select></div>
 <div id='plantScheduleFields'>
 <h4 style='margin:12px 0 8px'>Lịch vận hành nhà máy</h4>
@@ -143,6 +146,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Mức phụ tải duy trì ngoài ca / ngày nghỉ (%)</label><input id='plantOutsideShare' type='number' min='0' max='100' value='10'></div>
 </div>
 <p class='muted'>Mặc định tải nền ngoài ca/ngày nghỉ là 10% để tạo ước tính ban đầu; hãy chỉnh theo thực tế từng nhà máy. Tỷ lệ máy dừng 80% nghĩa là còn khoảng 20% mức tải vận hành trong giờ nghỉ trưa.</p>
+</div>
 </div>
 <p class='muted'>Website tự tạo 23 điểm phụ tải sau khi chọn nhóm hóa đơn; có thể chỉnh sửa theo thực tế. Nếu chỉ có hóa đơn một giá hoặc thiếu 3 khung giờ, không đủ cơ sở để tự dựng đường phụ tải theo TOU.</p>
 <div class='row'><button class='btn alt' type='button' onclick='fillFlatLoadProfile()'>Phân bổ đều theo điện ban ngày</button><button class='btn alt' type='button' onclick='clearLoadProfile()'>Xóa dữ liệu nhập</button><button class='btn' type='button' onclick='drawLoadPvComparison()'>Vẽ / cập nhật biểu đồ</button></div>
@@ -276,6 +280,11 @@ function updateTouScheduleDescription(){
  :'Khung giờ mới: Cao điểm Thứ Hai–Thứ Bảy 09:30–11:30 và 17:00–20:00; bình thường 04:00–09:30, 11:30–17:00 và 20:00–22:00 (Chủ nhật 04:00–22:00); thấp điểm tất cả các ngày 22:00–04:00 hôm sau.';
 }
 function toMinutes(v){if(!v||!v.includes(':'))return NaN;const p=v.split(':').map(Number);return p[0]*60+p[1]}
+function toggleLoadCustomerMode(){
+ const household=$('loadCustomerMode')?.value==='household';
+ $('householdLoadInfo').style.display=household?'block':'none';
+ $('factoryLoadFields').style.display=household?'none':'block';
+}
 function togglePlantScheduleMode(){
  const continuous=$('plantLoadMode').value==='continuous';
  $('plantScheduleFields').style.display=continuous?'none':'block';
@@ -286,7 +295,20 @@ function buildLoadProfileFromTou(){
   if(!group)throw Error('Hãy chọn nhóm hóa đơn trước.');
   const rows=billBatchResults.filter(x=>x._included&&billGroupKey(x)===group);
   if(!rows.length)throw Error('Nhóm hóa đơn đã chọn không có dữ liệu.');
-  if(!rows.every(x=>['kinh doanh','sản xuất'].some(t=>(x.customer_type||'').toLowerCase().includes(t))))throw Error('Cần chọn nhóm hóa đơn điện sản xuất/kinh doanh.');
+  const household=$('loadCustomerMode')?.value==='household';
+  if(household){
+   if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Hóa đơn thiếu ngày bắt đầu/kết thúc kỳ.');
+   const dayShare=Number($('billDayShare').value),nightShare=Number($('billNightShare').value);
+   if(!Number.isFinite(dayShare)||dayShare<0||dayShare>100||Math.abs(dayShare+nightShare-100)>.11)throw Error('Tỷ lệ ngày và đêm phải hợp lệ và tổng bằng 100%.');
+   let totalKwh=0,totalDays=0;
+   rows.forEach(row=>{const st=new Date(row.period_start+'T00:00:00Z'),en=new Date(row.period_end+'T00:00:00Z');if(isNaN(st)||isNaN(en)||en<st)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));totalDays+=Math.round((en-st)/86400000)+1;totalKwh+=Number(row.monthly_kwh)||0});
+   if(totalDays<=0||totalKwh<=0)throw Error('Không có tổng kWh hoặc số ngày hợp lệ để dựng phụ tải hộ dân.');
+   const dayKwh=totalKwh/totalDays*dayShare/100,dayKw=dayKwh/11;
+   loadProfileTimes.forEach((t,i)=>{$('loadProfile'+i).value=dayKw.toFixed(2)});
+   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân 24/24 từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Tỷ lệ ngày '+dayShare.toFixed(1)+'%, ban đêm '+nightShare.toFixed(1)+'%. Điện năng ban ngày 06:00–17:00 ước tính '+dayKwh.toFixed(1)+' kWh/ngày; công suất phụ tải ban ngày giả định '+dayKw.toFixed(2)+' kW. Phần phụ tải ban đêm được tính riêng theo tỷ lệ '+nightShare.toFixed(1)+'% trong sizing pin. Đường phụ tải ban ngày đang giả định phẳng.';
+   drawLoadPvComparison();return;
+  }
+  if(!rows.every(x=>['kinh doanh','sản xuất'].some(t=>(x.customer_type||'').toLowerCase().includes(t))))throw Error('Nhà máy cần chọn nhóm hóa đơn điện sản xuất/kinh doanh.');
   if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Hóa đơn thiếu ngày bắt đầu/kết thúc kỳ.');
   const continuous=$('plantLoadMode').value==='continuous';
   if(!continuous&&rows.some(x=>!x.tou_kwh||!['normal','peak','offpeak'].every(k=>Number.isFinite(Number(x.tou_kwh[k])))))throw Error('Chế độ theo lịch ca cần đủ kWh bình thường, cao điểm và thấp điểm.');
