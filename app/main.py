@@ -92,8 +92,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
 <div class='field'><label>Sản lượng trung bình (kWh/ngày)</label><input id='billDailyAverage' type='number' readonly placeholder='Tự tính từ tổng kWh / số ngày'></div>
 <div class='field'><label>Giá điện trung bình (đ/kWh)</label><input id='billAveragePrice' type='number' readonly placeholder='Tự tính từ tổng tiền / tổng kWh'></div>
-<div class='field'><label>Tỷ lệ tiêu thụ ban ngày (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
-<div class='field'><label>Tỷ lệ tiêu thụ ban đêm (%)</label><input id='billNightShare' type='number' readonly value='35'></div>
+<div class='field'><label>Tỷ lệ tiêu thụ 00:00–18:00 (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
+<div class='field'><label>Tỷ lệ tiêu thụ 18:00–24:00 (%)</label><input id='billNightShare' type='number' readonly value='35'></div>
 <div class='field'><label>Tỷ lệ pin đáp ứng điện ban đêm (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='100'><small class='muted'>Mặc định 100%; có thể giảm xuống 70–90% tùy mục tiêu đầu tư.</small></div>
 <div class='field'><label>Số giờ nắng đỉnh PSH (h/ngày)</label><input id='billPsh' type='number' min='.5' max='8' step='.1' value='4'></div>
 <div class='field'><label>Độ sâu xả pin DoD (%)</label><input id='billDod' type='number' min='50' max='100' step='1' value='90'></div>
@@ -121,10 +121,10 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div id='targetBatteryPvResult' class='muted' style='margin-top:10px'>Chưa tính phương án pin mục tiêu.</div>
 </div>
 <div style='border-top:1px solid #e2eae5;margin-top:16px;padding-top:14px'>
-<h3 style='margin:0 0 6px'>Biểu đồ phụ tải (06:00–17:00)</h3>
+<h3 style='margin:0 0 6px'>Biểu đồ phụ tải (nhà máy 06:00–17:00 · hộ dân 06:00–20:00)</h3>
 <p class='muted'>Chọn loại phụ tải để website áp dụng mô hình phù hợp: hộ dân dùng điện 24/24 với tỷ lệ ngày/đêm; nhà máy dùng lịch ca, ngày hoạt động và nghỉ trưa.</p>
 <div class='field' style='max-width:520px;margin:10px 0'><label>Loại phụ tải</label><select id='loadCustomerMode' onchange='toggleLoadCustomerMode()'><option value='household'>1. Hộ dân</option><option value='factory' selected>2. Nhà máy</option></select></div>
-<div id='householdLoadInfo' class='muted' style='display:none;margin:8px 0 12px'>Hộ dân được giả định sử dụng điện liên tục 24/24. Website phân bổ tổng điện năng theo tỷ lệ tiêu thụ ban ngày và ban đêm ở phần thông tin hóa đơn; đường phụ tải ban ngày 06:00–17:00 được giả định phẳng. Không áp dụng lịch ca hoặc nghỉ trưa.<div style='margin-top:8px'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo phụ tải hộ dân từ kWh hóa đơn</button></div></div>
+<div id='householdLoadInfo' class='muted' style='display:none;margin:8px 0 12px'>Hộ dân sử dụng điện 24/24. Phân bổ điện năng theo hai khoảng: ban ngày 00:00–18:00 và ban đêm 18:00–24:00. Biểu đồ hiển thị 06:00–20:00: phụ tải ban ngày đến 18:00, sau đó chuyển sang phụ tải buổi tối. Không áp dụng lịch ca hoặc nghỉ trưa.<div style='margin-top:8px'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo phụ tải hộ dân từ kWh hóa đơn</button></div></div>
 <div id='factoryLoadFields'>
 <div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));margin:10px 0'>
 <div class='field'><label>Khung giờ tính toán</label><select id='touScheduleMode'><option value='old'>KHUNG GIỜ CŨ</option><option value='new'>KHUNG GIỜ MỚI</option></select></div>
@@ -305,9 +305,9 @@ function buildLoadProfileFromTou(){
    let totalKwh=0,totalDays=0;
    rows.forEach(row=>{const st=new Date(row.period_start+'T00:00:00Z'),en=new Date(row.period_end+'T00:00:00Z');if(isNaN(st)||isNaN(en)||en<st)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));totalDays+=Math.round((en-st)/86400000)+1;totalKwh+=Number(row.monthly_kwh)||0});
    if(totalDays<=0||totalKwh<=0)throw Error('Không có tổng kWh hoặc số ngày hợp lệ để dựng phụ tải hộ dân.');
-   const dayKwh=totalKwh/totalDays*dayShare/100,dayKw=dayKwh/14;
-   loadProfileTimes.forEach((t,i)=>{$('loadProfile'+i).value=dayKw.toFixed(2)});
-   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân 24/24 từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Tỷ lệ ngày '+dayShare.toFixed(1)+'%, ban đêm '+nightShare.toFixed(1)+'%. Điện năng ban ngày 06:00–20:00 ước tính '+dayKwh.toFixed(1)+' kWh/ngày; công suất phụ tải ban ngày giả định '+dayKw.toFixed(2)+' kW. Phần phụ tải ban đêm được tính riêng theo tỷ lệ '+nightShare.toFixed(1)+'% trong sizing pin. Đường phụ tải ban ngày đang giả định phẳng từ 06:00 đến 20:00.';
+   const dayKwh=totalKwh/totalDays*dayShare/100,nightKwh=totalKwh/totalDays*nightShare/100,dayKw=dayKwh/18,nightKw=nightKwh/6;
+   loadProfileTimes.forEach((t,i)=>{$('loadProfile'+i).value=(Number(t.slice(0,2))<18?dayKw:nightKw).toFixed(2)});
+   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân 24/24 từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Tỷ lệ 00:00–18:00: '+dayShare.toFixed(1)+'%, 18:00–24:00: '+nightShare.toFixed(1)+'%. Công suất trung bình ban ngày '+dayKw.toFixed(2)+' kW (tổng '+dayKwh.toFixed(1)+' kWh/ngày); buổi tối '+nightKw.toFixed(2)+' kW (tổng '+nightKwh.toFixed(1)+' kWh/ngày). Biểu đồ hiển thị 06:00–20:00, chuyển từ tải ngày sang tải tối lúc 18:00.';
    drawLoadPvComparison();return;
   }
   if(!rows.every(x=>['kinh doanh','sản xuất'].some(t=>(x.customer_type||'').toLowerCase().includes(t))))throw Error('Nhà máy cần chọn nhóm hóa đơn điện sản xuất/kinh doanh.');
