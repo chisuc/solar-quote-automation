@@ -411,7 +411,7 @@ async function ocrBillInBrowser(file){
   const result=await worker.recognize(crop,{rotateAuto:true});
   outputs.push(result.data.text||'');
  }
- let combined=outputs.join('\n');
+ let combined=outputs.join('\\n');
  if(combined.trim().length<100){
   await worker.setParameters({tessedit_pageseg_mode:'11'});
   const full=await worker.recognize(canvas);
