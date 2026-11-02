@@ -391,7 +391,7 @@ function drawLoadPvComparison(){
   const pvAt=i=>{if(!hasPv)return 0;const h=startHour+(i+.5)/2,lo=Math.floor(h),hi=Math.min(23,lo+1),f=h-lo;return Number(hourly[lo]||0)*(1-f)+Number(hourly[hi]||0)*f};
   const pvEnergy=hasPv?hourly.slice(startHour,endHour).reduce((sum,v)=>sum+Number(v||0),0):0;
   let selfUse=0,gridImport=0,exportEnergy=0,batteryDischarge=0,batteryExhaustAt=null;
-  const batteryCurve=Array(intervals).fill(0);
+  const batteryCurve=Array(intervals).fill(0),batteryFillRatio=Array(intervals).fill(0);
   if(hasPv){
    let remaining=0;
    if(household){const total=Number($('batTotal')?.value)||((Number($('batKwh')?.value)||loadSizingResult?.batteryKwh||0)*(Number($('batQty')?.value)||1));const dod=(Number($('billDod')?.value)||90)/100;remaining=Math.max(0,total*dod)}
@@ -401,6 +401,7 @@ function drawLoadPvComparison(){
     let discharge=0;
     if(household&&deficit>0&&remaining>0){discharge=Math.min(deficit,remaining);remaining-=discharge;batteryDischarge+=discharge;if(remaining<=1e-6&&batteryExhaustAt===null)batteryExhaustAt=startHour+(i+1)/2}
     batteryCurve[i]=discharge/.5;
+    batteryFillRatio[i]=deficit>0?Math.min(1,discharge/deficit):0;
     gridImport+=Math.max(0,deficit-discharge);
    }
   }
@@ -417,17 +418,25 @@ function drawLoadPvComparison(){
   const pvArea=hasPv&&pts.length===endHour-startHour+1?pvSmooth+' L'+pts[pts.length-1].x.toFixed(1)+' '+y(0).toFixed(1)+' L'+pts[0].x.toFixed(1)+' '+y(0).toFixed(1)+' Z':'';
   // Draw only the actual missing-power gap: PV is the lower boundary and
   // the battery-supported load is the upper boundary, capped at the load.
-  const pvBoundary=i=>{if(!hasPv)return 0;const h=startHour+i/2,lo=Math.floor(h),hi=Math.min(23,lo+1),f=h-lo;return Number(hourly[lo]||0)*(1-f)+Number(hourly[hi]||0)*f};
-  let batteryPath='',batteryTopPath='';
+  // Match the exact Catmull-Rom curve used by the green PV line, so the blue
+  // battery area touches PV continuously without thin white wedges.
+  const pvBoundary=i=>{
+   if(!hasPv)return 0;
+   const h=startHour+i/2,base=Math.floor(h),t=h-base;
+   const val=k=>Number(hourly[Math.max(startHour,Math.min(endHour,k))]||0);
+   const p0=val(base-1),p1=val(base),p2=val(base+1),p3=val(base+2);
+   return Math.max(0,.5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t*t+(-p0+3*p1-3*p2+p3)*t*t*t));
+  };
+  let batteryPath='';
   for(let i=0;i<intervals;i++){
-   const p0=pvBoundary(i),p1=pvBoundary(i+1),dis=batteryCurve[i];
-   const top0=Math.min(load[i],p0+dis),top1=Math.min(load[i],p1+dis);
-   if(dis>0.001&&Math.max(top0-p0,top1-p1)>0.001){
-    batteryPath+=' M'+x(i).toFixed(1)+' '+y(top0).toFixed(1)+' L'+x(i+1).toFixed(1)+' '+y(top1).toFixed(1)+' L'+x(i+1).toFixed(1)+' '+y(p1).toFixed(1)+' L'+x(i).toFixed(1)+' '+y(p0).toFixed(1)+' Z';
-    batteryTopPath+=(batteryTopPath?' ':'')+'M'+x(i).toFixed(1)+' '+y(top0).toFixed(1)+' L'+x(i+1).toFixed(1)+' '+y(top1).toFixed(1);
+   const p0=pvBoundary(i),p1=pvBoundary(i+1),ratio=batteryFillRatio[i];
+   const gap0=Math.max(0,load[i]-p0),gap1=Math.max(0,load[i]-p1);
+   const top0=p0+gap0*ratio,top1=p1+gap1*ratio;
+   if(ratio>0.001&&Math.max(top0-p0,top1-p1)>0.001){
+    batteryPath+=' M'+x(i).toFixed(2)+' '+y(top0).toFixed(2)+' L'+x(i+1).toFixed(2)+' '+y(top1).toFixed(2)+' L'+x(i+1).toFixed(2)+' '+y(p1).toFixed(2)+' L'+x(i).toFixed(2)+' '+y(p0).toFixed(2)+' Z';
    }
   }
-  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ PV, phụ tải và công suất xả pin từ 6 giờ đến '+endHour+' giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+(household&&hasPv?'<path d="'+batteryPath+'" fill="#2878d0" fill-opacity=".34" stroke="none"/>':'')+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
+  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ PV, phụ tải và công suất xả pin từ 6 giờ đến '+endHour+' giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+(household&&hasPv?'<path d="'+batteryPath+'" fill="#2878d0" fill-opacity=".30" stroke="none"/>':'')+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div>'+(unit==='%'?'<h3 style="margin:7px 0;color:#16845b;white-space:nowrap">'+value.toFixed(1)+'<span style="font-size:.78em;margin-left:3px">%</span></h3>':'<h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div>')+'</div>';
   let metrics=card('Điện năng phụ tải '+startHour+'–'+endHour,energy,'kWh/ngày')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình '+startHour+'–'+endHour,average,'kW');
   if(hasPv){const loadCoverage=energy>0?selfUse/energy*100:0,pvSelfRate=pvEnergy>0?selfUse/pvEnergy*100:0;metrics+=card('PV trung bình '+startHour+'–'+endHour,pvEnergy,'kWh/ngày')+card('PV tự tiêu thụ',selfUse,'kWh/ngày')+card('Điện lưới cần bổ sung',gridImport,'kWh/ngày')+card('PV dư / có thể sạc vào pin lưu trữ',exportEnergy,'kWh/ngày')+card('Tỷ lệ phụ tải được PV đáp ứng',loadCoverage,'%')+card('Tỷ lệ PV được tự tiêu thụ',pvSelfRate,'%');if(household)metrics+=card('Điện pin xả trong biểu đồ',batteryDischarge,'kWh/ngày')+(batteryExhaustAt!==null?'<div class="gsa-card"><div class="muted">Pin cạn theo mô hình</div><h3 style="margin:7px 0;color:#2878d0">'+batteryExhaustAt.toFixed(1).replace('.',':')+' h</h3><div class="muted">Sau thời điểm này lưới cấp phần thiếu</div></div>':'<div class="gsa-card"><div class="muted">Trạng thái pin lúc 20:00</div><h3 style="margin:7px 0;color:#2878d0">Còn năng lượng</h3><div class="muted">Pin có thể tiếp tục xả sau 20:00</div></div>')}
