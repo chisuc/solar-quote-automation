@@ -652,12 +652,25 @@ def _bill_read_document(data,ext):
     text=""; used_ocr=False
     if ext==".pdf":
         reader=PdfReader(io.BytesIO(data))
-        text="\n".join((p.extract_text() or "") for p in reader.pages[:5])
-        if len(text.strip())<80:
-            page_count=min(2,len(reader.pages))
-            pages=convert_from_bytes(data,dpi=180,first_page=1,last_page=page_count)
-            text="\n".join(_bill_ocr_image(page) for page in pages)
-            used_ocr=True
+        # Extract native PDF text from all invoice pages first. A fixed character
+        # threshold is unreliable: some valid EVN PDFs have short but useful text.
+        text="\n".join((p.extract_text() or "") for p in reader.pages[:8])
+        native=text.strip()
+        native_result=_bill_extract_values(native) if native else {}
+        native_has_bill_data=bool(
+            native_result.get("monthly_kwh") or
+            any((native_result.get("tou_kwh") or {}).values()) or
+            native_result.get("amount_vnd")
+        )
+        # Keep native text whenever it contains usable bill values; OCR only
+        # image-only PDFs or PDFs whose text layer contains no usable bill data.
+        if not native_has_bill_data:
+            page_count=min(3,len(reader.pages))
+            pages=convert_from_bytes(data,dpi=240,first_page=1,last_page=page_count)
+            ocr_text="\n".join(_bill_ocr_image(page) for page in pages)
+            if ocr_text.strip():
+                text=ocr_text
+                used_ocr=True
     else:
         with Image.open(io.BytesIO(data)) as source:
             text=_bill_ocr_image(source)
