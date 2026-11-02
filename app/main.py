@@ -304,6 +304,8 @@ function choosePvModuleCount(count){
  $('panelQty').value=count;calc();
  const actual=n('pv');
  $('pvSystemSize').value=actual.toFixed(3);
+ $('resPv').textContent=actual.toFixed(3);
+ const pvLabel=$('resPv').parentElement.querySelector('.muted');if(pvLabel)pvLabel.textContent='kWp DC · công suất lắp đặt thực tế';
  $('loadSizingStatus').textContent='Đã chọn '+count+' tấm PV, tổng công suất lắp đặt '+actual.toFixed(3)+' kWp DC. Nếu muốn PVWatts mô phỏng theo công suất thực tế này, hãy bấm Tính toán PVWatts lại.';
 }
 function calculateLoadSizing(){
