@@ -456,21 +456,32 @@ async function readBills(){
   $('billReadStatus').textContent='OCR trên máy tính '+done+'/'+files.length+' file · nhận diện được '+ok+'/'+done+' · lỗi '+failed;
   progress.innerHTML='<div style="height:8px;background:#e7efeb;border-radius:8px;overflow:hidden;margin:8px 0"><div style="height:100%;width:'+(done/files.length*100)+'%;background:#16845b\"></div></div><div style="font-size:13px;font-weight:600;margin-bottom:6px">'+escHtml(status||current)+'</div><div style="display:grid;gap:5px">'+files.map((file,i)=>{const item=billBatchResults[i];let label=item?(item.error?'Không đọc được: '+item.error:(item.monthly_kwh?'Đọc thành công · '+Number(item.monthly_kwh).toLocaleString('vi-VN')+' kWh':'Thiếu tổng kWh')):(i===done?'Đang OCR trên máy tính...':'Đang chờ');return '<div style="display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #edf1ef;padding:5px 0;font-size:12px"><span>'+ (i+1)+'. '+escHtml(file.name)+'</span><span>'+escHtml(label)+'</span></div>'}).join('')+'</div>';
  };
- renderProgress(0,files[0]?.name,'Khởi tạo OCR trên Chrome. Render không phải xử lý ảnh.');
+ renderProgress(0,files[0]?.name,'Chuẩn bị đọc PDF bằng trích xuất văn bản; ảnh sẽ dùng OCR trên Chrome.');
  try{
-  await getBillOcrWorker();
+  if(files.some(f=>!(f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf'))))await getBillOcrWorker();
   for(let i=0;i<files.length;i++){
-   const file=files[i];renderProgress(i,file.name,'Đang đọc '+(i+1)+'/'+files.length+': '+file.name);
+   const file=files[i];renderProgress(i,file.name,'Đang '+((file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf'))?'trích xuất PDF ':'OCR ảnh ')+(i+1)+'/'+files.length+': '+file.name);
    try{
     if(file.size>20*1024*1024)throw Error('File vượt quá 20 MB');
-    const text=await ocrBillInBrowser(file);
-    if(!text.trim())throw Error('OCR không nhận diện được chữ trong file');
-    const res=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text})});
-    let data={};try{data=await res.json()}catch(_){}
-    if(!res.ok)throw Error(data.detail||'Không phân tích được văn bản OCR');
+    let data={};
+    if(file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf')){
+     // PDFs should use native text extraction first on the server (PdfReader).
+     // The server only falls back to OCR for scanned/image-only PDFs.
+     const form=new FormData();form.append('file',file,file.name);
+     const res=await fetch('/api/bill/read',{method:'POST',body:form});
+     try{data=await res.json()}catch(_){}
+     if(!res.ok)throw Error(data.detail||'Không trích xuất được nội dung PDF');
+    }else{
+     // Raster images continue to use browser OCR.
+     const text=await ocrBillInBrowser(file);
+     if(!text.trim())throw Error('OCR không nhận diện được chữ trong file');
+     const res=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text})});
+     try{data=await res.json()}catch(_){}
+     if(!res.ok)throw Error(data.detail||'Không phân tích được văn bản OCR');
+    }
     billBatchResults.push(data);
    }catch(e){billBatchResults.push({filename:file.name,error:e.message,monthly_kwh:null})}
-   renderBillBatch();calcBillNightShare();renderProgress(i+1,files[i+1]?.name,i+1===files.length?'Đã hoàn tất OCR trên máy tính.':'Đã xong '+(i+1)+'/'+files.length+' file.');
+   renderBillBatch();calcBillNightShare();renderProgress(i+1,files[i+1]?.name,i+1===files.length?'Đã hoàn tất đọc hóa đơn.':'Đã xong '+(i+1)+'/'+files.length+' file.');
   }
  }catch(e){
   $('billReadStatus').textContent='Không khởi động được OCR trên Chrome: '+e.message;
@@ -478,7 +489,7 @@ async function readBills(){
  }
  const ok=billBatchResults.filter(x=>x.monthly_kwh&&!x.error).length,fail=billBatchResults.length-ok;
  $('billReadStatus').textContent='Hoàn tất: đọc được '+ok+'/'+files.length+' file; '+fail+' file lỗi hoặc chưa nhận diện đủ tổng kWh.';
- $('loadSizingStatus').textContent='OCR được thực hiện trên máy tính. Kiểm tra số liệu từng hóa đơn trước khi tính công suất.';
+ $('loadSizingStatus').textContent='PDF được trích xuất văn bản gốc; ảnh được OCR trên trình duyệt. Kiểm tra số liệu từng hóa đơn trước khi tính công suất.';
 }
 $('billDayShare').addEventListener('input',()=>{calcBillNightShare();loadSizingResult=null});
 for(const id of ['billMonthKwh','billDays','billPsh','billDod'])$(id).addEventListener('input',()=>{loadSizingResult=null});
