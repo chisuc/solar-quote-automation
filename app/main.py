@@ -123,6 +123,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Số ngày hoạt động/tuần</label><select id='plantWorkDays'><option value='5'>5 ngày (Thứ Hai–Thứ Sáu)</option><option value='6' selected>6 ngày (Thứ Hai–Thứ Bảy)</option><option value='7'>7 ngày</option></select></div>
 <div class='field'><label>Giờ bắt đầu ca</label><input id='plantStart' type='time' value='08:00'></div>
 <div class='field'><label>Giờ kết thúc ca</label><input id='plantEnd' type='time' value='16:30'></div>
+<div class='field'><label style='display:flex;align-items:center;gap:8px'><input id='plantLunchEnabled' type='checkbox' style='width:auto'> Có nghỉ trưa / giảm tải trong giờ nghỉ</label><small class='muted'>Bỏ chọn nếu nhà máy hoặc tải vận hành liên tục 24/24.</small></div>
 <div class='field'><label>Bắt đầu nghỉ trưa</label><input id='plantLunchStart' type='time' value='11:00'></div>
 <div class='field'><label>Kết thúc nghỉ trưa</label><input id='plantLunchEnd' type='time' value='13:00'></div>
 <div class='field'><label>% máy dừng trong giờ nghỉ trưa</label><input id='plantLunchOff' type='number' min='0' max='100' value='50'></div>
@@ -246,11 +247,11 @@ function buildLoadProfileFromTou(){
   if(!rows.every(x=>['kinh doanh','sản xuất'].some(t=>(x.customer_type||'').toLowerCase().includes(t))))throw Error('Cần chọn nhóm hóa đơn điện sản xuất/kinh doanh.');
   if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Hóa đơn thiếu ngày bắt đầu/kết thúc kỳ.');
   if(rows.some(x=>!x.tou_kwh||!['normal','peak','offpeak'].every(k=>Number.isFinite(Number(x.tou_kwh[k])))))throw Error('Hóa đơn cần có đủ kWh bình thường, cao điểm và thấp điểm.');
-  const startMin=toMinutes($('plantStart').value),endMin=toMinutes($('plantEnd').value),lunchStart=toMinutes($('plantLunchStart').value),lunchEnd=toMinutes($('plantLunchEnd').value);
-  const workDays=Number($('plantWorkDays').value),lunchRaw=$('plantLunchOff').value.trim(),outsideRaw=$('plantOutsideShare').value.trim(),lunchOff=Number(lunchRaw)/100,outsideFactor=Number(outsideRaw)/100;
+  const startMin=toMinutes($('plantStart').value),endMin=toMinutes($('plantEnd').value),lunchEnabled=$('plantLunchEnabled').checked,lunchStart=toMinutes($('plantLunchStart').value),lunchEnd=toMinutes($('plantLunchEnd').value);
+  const workDays=Number($('plantWorkDays').value),lunchRaw=$('plantLunchOff').value.trim(),outsideRaw=$('plantOutsideShare').value.trim(),lunchOff=lunchEnabled?Number(lunchRaw)/100:0,outsideFactor=Number(outsideRaw)/100;
   if(!(startMin>=0&&endMin>startMin&&endMin<=1440))throw Error('Giờ bắt đầu/kết thúc ca không hợp lệ.');
-  if(!(lunchStart>=startMin&&lunchEnd>lunchStart&&lunchEnd<=endMin))throw Error('Giờ nghỉ trưa phải nằm trong ca làm việc.');
-  if(lunchRaw===''||outsideRaw===''||!Number.isFinite(lunchOff)||lunchOff<0||lunchOff>1||!Number.isFinite(outsideFactor)||outsideFactor<0||outsideFactor>1)throw Error('Vui lòng kiểm tra tỷ lệ máy dừng giờ nghỉ và tải nền ngoài ca (0–100%).');
+  if(lunchEnabled&&!(lunchStart>=startMin&&lunchEnd>lunchStart&&lunchEnd<=endMin))throw Error('Giờ nghỉ trưa phải nằm trong ca làm việc.');
+  if((lunchEnabled&&lunchRaw==='')||outsideRaw===''||!Number.isFinite(lunchOff)||lunchOff<0||lunchOff>1||!Number.isFinite(outsideFactor)||outsideFactor<0||outsideFactor>1)throw Error('Vui lòng kiểm tra tỷ lệ máy dừng giờ nghỉ và tải nền ngoài ca (0–100%).');
   let totalDays=0,normalKwh=0,peakKwh=0,offKwh=0;const dates=[];
   const parseDate=v=>{const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):null};
   rows.forEach(row=>{const st=parseDate(row.period_start),en=parseDate(row.period_end);if(!st||!en||en<st)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));for(let d=new Date(st);d<=en;d.setUTCDate(d.getUTCDate()+1)){dates.push(new Date(d));totalDays++}normalKwh+=Number(row.tou_kwh.normal)||0;peakKwh+=Number(row.tou_kwh.peak)||0;offKwh+=Number(row.tou_kwh.offpeak)||0});
@@ -263,7 +264,7 @@ function buildLoadProfileFromTou(){
   };
   // Convert bill kWh into average kW for each tariff class using all actual calendar days in the billing periods.
   const eff={normal:0,peak:0,offpeak:0};
-  dates.forEach(date=>{const working=isWorking(date);for(let m=0;m<1440;m+=30){const cls=tariff(date,m);let factor=outsideFactor;if(working&&m>=startMin&&m<endMin){const overlap=Math.max(0,Math.min(m+30,lunchEnd)-Math.max(m,lunchStart))/30;factor=1-overlap*lunchOff}eff[cls]+=.5*factor}});
+  dates.forEach(date=>{const working=isWorking(date);for(let m=0;m<1440;m+=30){const cls=tariff(date,m);let factor=outsideFactor;if(working&&m>=startMin&&m<endMin){const overlap=lunchEnabled?Math.max(0,Math.min(m+30,lunchEnd)-Math.max(m,lunchStart))/30:0;factor=1-overlap*lunchOff}eff[cls]+=.5*factor}});
   const energy={normal:normalKwh,peak:peakKwh,offpeak:offKwh},kw={};
   for(const k of ['normal','peak','offpeak']){if(energy[k]>0&&eff[k]<=0)throw Error('Không đủ giờ quy đổi cho khung '+k+'. Kiểm tra lịch vận hành và tải nền ngoài ca.');kw[k]=eff[k]>0?energy[k]/eff[k]:0}
   // Build a representative week (Mon-Sun), then average all seven days.
@@ -274,13 +275,13 @@ function buildLoadProfileFromTou(){
    const daily=week.map(date=>{
     const working=isWorking(date),cls=tariff(date,minute);
     if(!working||minute<startMin||minute>=endMin)return kw[cls]*outsideFactor;
-    const overlap=Math.max(0,Math.min(minute+30,lunchEnd)-Math.max(minute,lunchStart))/30;
+    const overlap=lunchEnabled?Math.max(0,Math.min(minute+30,lunchEnd)-Math.max(minute,lunchStart))/30:0;
     return kw[cls]*(1-overlap*lunchOff);
    });
    $('loadProfile'+i).value=(daily.reduce((sum,v)=>sum+v,0)/7).toFixed(2);
   });
   const energy0617=loadProfileTimes.slice(0,-1).reduce((sum,_,i)=>sum+(Number($('loadProfile'+i).value)+Number($('loadProfile'+(i+1)).value))*.25,0);
-  $('loadSizingStatus').textContent='Đã tự dựng phụ tải 30 phút từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Lịch '+workDays+' ngày/tuần; ca '+$('plantStart').value+'–'+$('plantEnd').value+'; nghỉ '+$('plantLunchStart').value+'–'+$('plantLunchEnd').value+'; dừng '+$('plantLunchOff').value+'% máy; tải nền ngoài ca/ngày nghỉ '+$('plantOutsideShare').value+'%. Điện 06:00–17:00 ước tính theo ngày trung bình tuần: '+energy0617.toFixed(1)+' kWh. Đây là mô hình ước tính từ hóa đơn, không phải số đo công tơ.';
+  $('loadSizingStatus').textContent='Đã tự dựng phụ tải 30 phút từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Lịch '+workDays+' ngày/tuần; ca '+$('plantStart').value+'–'+$('plantEnd').value+'; '+(lunchEnabled?'nghỉ trưa '+$('plantLunchStart').value+'–'+$('plantLunchEnd').value+', dừng '+$('plantLunchOff').value+'% máy':'không áp dụng nghỉ trưa')+'; tải nền ngoài ca/ngày nghỉ '+$('plantOutsideShare').value+'%. Điện 06:00–17:00 ước tính theo ngày trung bình tuần: '+energy0617.toFixed(1)+' kWh. Đây là mô hình ước tính từ hóa đơn, không phải số đo công tơ.';
   drawLoadPvComparison();
  }catch(e){$('loadSizingStatus').textContent=e.message}
 }
