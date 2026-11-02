@@ -777,22 +777,37 @@ def _bill_extract_values(text):
     def _bill_plain(value):
         return "".join(ch for ch in unicodedata.normalize("NFD",value or "")
                        if unicodedata.category(ch)!="Mn").replace("đ","d").replace("Đ","D").lower()
+    # Parse only the meter-consumption section. Some EVNSPC bills replace
+    # the meter mid-cycle and repeat each TOU row for the old and new meters.
+    # Sum those rows; stop before the separate tariff/payment breakdown.
     tou={}
+    in_meter_section=False
+    pending_key=None
     for line in lines:
         plain_line=_bill_plain(line)
+        if "cong to do dem" in plain_line:
+            in_meter_section=True
+            pending_key=None
+            continue
+        if not in_meter_section:
+            continue
+        if re.search(r"tong\\s*:",plain_line):
+            break
         key=None
         if "khung gio binh thuong" in plain_line: key="normal"
         elif "khung gio cao diem" in plain_line: key="peak"
         elif "khung gio thap diem" in plain_line: key="offpeak"
-        if key and key not in tou:
-            values=re.findall(r"\d[\d.,]*",line)
-            # A TOU row normally contains multiplier, new index, old index,
-            # then consumption. Ignore stray OCR digits after the row.
-            if len(values)>=4: raw_value=values[3]
-            elif len(values)==3: raw_value=values[2]
-            else: raw_value=None
-            value=_bill_number(raw_value) if raw_value else None
-            if value is not None: tou[key]=value
+        if key:
+            pending_key=key
+        values=re.findall(r"\\d[\\d.,]*",line)
+        # Meter rows contain multiplier, new index, old index, consumption.
+        # Wrapped removal dates (e.g. 26/03/2026) are skipped until the
+        # following numeric row supplies all four fields.
+        if pending_key and len(values)>=4:
+            value=_bill_number(values[3])
+            if value is not None:
+                tou[pending_key]=tou.get(pending_key,0)+value
+                pending_key=None
     total_hint=None
     for line in lines:
         plain_line=_bill_plain(line)
