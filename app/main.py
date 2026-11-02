@@ -124,7 +124,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <h3 style='margin:0 0 6px'>Biểu đồ phụ tải (06:00–17:00)</h3>
 <p class='muted'>Chọn loại phụ tải để website áp dụng mô hình phù hợp: hộ dân dùng điện 24/24 với tỷ lệ ngày/đêm; nhà máy dùng lịch ca, ngày hoạt động và nghỉ trưa.</p>
 <div class='field' style='max-width:520px;margin:10px 0'><label>Loại phụ tải</label><select id='loadCustomerMode' onchange='toggleLoadCustomerMode()'><option value='household'>1. Hộ dân</option><option value='factory' selected>2. Nhà máy</option></select></div>
-<div id='householdLoadInfo' class='muted' style='display:none;margin:8px 0 12px'>Hộ dân được giả định sử dụng điện liên tục 24/24. Website phân bổ tổng điện năng theo tỷ lệ tiêu thụ ban ngày và ban đêm ở phần thông tin hóa đơn; đường phụ tải ban ngày 06:00–17:00 được giả định phẳng. Không áp dụng lịch ca hoặc nghỉ trưa.</div>
+<div id='householdLoadInfo' class='muted' style='display:none;margin:8px 0 12px'>Hộ dân được giả định sử dụng điện liên tục 24/24. Website phân bổ tổng điện năng theo tỷ lệ tiêu thụ ban ngày và ban đêm ở phần thông tin hóa đơn; đường phụ tải ban ngày 06:00–17:00 được giả định phẳng. Không áp dụng lịch ca hoặc nghỉ trưa.<div style='margin-top:8px'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo phụ tải hộ dân từ kWh hóa đơn</button></div></div>
 <div id='factoryLoadFields'>
 <div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));margin:10px 0'>
 <div class='field'><label>Khung giờ tính toán</label><select id='touScheduleMode'><option value='old'>KHUNG GIỜ CŨ</option><option value='new'>KHUNG GIỜ MỚI</option></select></div>
