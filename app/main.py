@@ -153,7 +153,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
 <div id='loadPvChart' style='display:none;margin-top:16px;border:1px solid #e2eae5;border-radius:9px;padding:10px'>
 <div id='loadPvChartSvg'></div>
-<div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#e53935'>━ Phụ tải nhà máy (kW)</span><span style='color:#168a55'>▰ PV trung bình theo giờ (kW)</span></div>
+<div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#e53935'>━ Phụ tải (kW)</span><span style='color:#168a55'>▰ Solar (kW)</span><span id='batteryLegend' style='color:#2878d0'>━ Công suất xả pin (kW)</span></div>
 <div id='loadPvMetrics' class='grid' style='margin-top:12px'></div>
 <p class='muted' id='loadPvNote' style='margin:10px 0 0'></p>
 </div>
@@ -272,7 +272,8 @@ function applyTargetBatteryPv(){
  loadSizingResult=r;applyLoadSizing();
  $('loadSizingStatus').textContent='Đã áp dụng phương án PV theo dung lượng pin mục tiêu. Kiểm tra cấu hình inverter và lưu dự án.';
 }
-const loadProfileTimes=Array.from({length:23},(_,i)=>{const mins=360+i*30;return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0')});
+let loadProfileTimes=Array.from({length:23},(_,i)=>{const mins=360+i*30;return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0')});
+function setLoadProfileRange(){const household=$('loadCustomerMode')?.value==='household',next=Array.from({length:household?29:23},(_,i)=>{const mins=360+i*30;return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0')});const old={};loadProfileTimes.forEach((t,i)=>{const el=$('loadProfile'+i);if(el)old[t]=el.value});loadProfileTimes=next;initLoadProfileInputs();loadProfileTimes.forEach((t,i)=>{if(old[t]!==undefined)$('loadProfile'+i).value=old[t]});}
 function updateTouScheduleDescription(){
  const mode=$('touScheduleMode')?.value||'old';
  $('touScheduleDescription').textContent=mode==='old'
@@ -284,6 +285,7 @@ function toggleLoadCustomerMode(){
  const household=$('loadCustomerMode')?.value==='household';
  $('householdLoadInfo').style.display=household?'block':'none';
  $('factoryLoadFields').style.display=household?'none':'block';
+ setLoadProfileRange();
 }
 function togglePlantScheduleMode(){
  const continuous=$('plantLoadMode').value==='continuous';
@@ -303,9 +305,9 @@ function buildLoadProfileFromTou(){
    let totalKwh=0,totalDays=0;
    rows.forEach(row=>{const st=new Date(row.period_start+'T00:00:00Z'),en=new Date(row.period_end+'T00:00:00Z');if(isNaN(st)||isNaN(en)||en<st)throw Error('Ngày kỳ hóa đơn không hợp lệ: '+(row.filename||''));totalDays+=Math.round((en-st)/86400000)+1;totalKwh+=Number(row.monthly_kwh)||0});
    if(totalDays<=0||totalKwh<=0)throw Error('Không có tổng kWh hoặc số ngày hợp lệ để dựng phụ tải hộ dân.');
-   const dayKwh=totalKwh/totalDays*dayShare/100,dayKw=dayKwh/11;
+   const dayKwh=totalKwh/totalDays*dayShare/100,dayKw=dayKwh/14;
    loadProfileTimes.forEach((t,i)=>{$('loadProfile'+i).value=dayKw.toFixed(2)});
-   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân 24/24 từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Tỷ lệ ngày '+dayShare.toFixed(1)+'%, ban đêm '+nightShare.toFixed(1)+'%. Điện năng ban ngày 06:00–17:00 ước tính '+dayKwh.toFixed(1)+' kWh/ngày; công suất phụ tải ban ngày giả định '+dayKw.toFixed(2)+' kW. Phần phụ tải ban đêm được tính riêng theo tỷ lệ '+nightShare.toFixed(1)+'% trong sizing pin. Đường phụ tải ban ngày đang giả định phẳng.';
+   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân 24/24 từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Tỷ lệ ngày '+dayShare.toFixed(1)+'%, ban đêm '+nightShare.toFixed(1)+'%. Điện năng ban ngày 06:00–20:00 ước tính '+dayKwh.toFixed(1)+' kWh/ngày; công suất phụ tải ban ngày giả định '+dayKw.toFixed(2)+' kW. Phần phụ tải ban đêm được tính riêng theo tỷ lệ '+nightShare.toFixed(1)+'% trong sizing pin. Đường phụ tải ban ngày đang giả định phẳng từ 06:00 đến 20:00.';
    drawLoadPvComparison();return;
   }
   if(!rows.every(x=>['kinh doanh','sản xuất'].some(t=>(x.customer_type||'').toLowerCase().includes(t))))throw Error('Nhà máy cần chọn nhóm hóa đơn điện sản xuất/kinh doanh.');
@@ -374,47 +376,50 @@ function initLoadProfileInputs(){
 function clearLoadProfile(){loadProfileTimes.forEach((_,i)=>$('loadProfile'+i).value='');$('loadPvChart').style.display='none'}
 function fillFlatLoadProfile(){
  const r=loadSizingResult||calculateLoadSizing();if(!r)return;
- const flat=r.dayKwh/11;
+ const flat=r.dayKwh/($('loadCustomerMode')?.value==='household'?14:11);
  loadProfileTimes.forEach((_,i)=>$('loadProfile'+i).value=flat.toFixed(1));
  drawLoadPvComparison();
 }
 function drawLoadPvComparison(){
  try{
-  const load=loadProfileTimes.map((t,i)=>{const raw=$('loadProfile'+i).value.trim();if(raw==='')throw Error('Vui lòng nhập đủ phụ tải tại 23 mốc 30 phút.');const v=Number(raw);if(!Number.isFinite(v)||v<0)throw Error('Phụ tải phải là số không âm tại mốc '+t+'.');return v});
-  const energy=load.slice(0,-1).reduce((sum,v)=>sum+v*.5,0);
-  const peak=Math.max(...load),average=energy/11;
-  const hourly=pvwattsResult?.hourly_average_kw;
-  const hasPv=Array.isArray(hourly)&&hourly.length===24;
-  const pvAt=i=>hasPv?Number(hourly[6+Math.floor(i/2)]||0):0;
-  const pvEnergy=hasPv?hourly.slice(6,17).reduce((sum,v)=>sum+Number(v||0),0):0;
-  let selfUse=0,gridImport=0,exportEnergy=0;
-  if(hasPv){for(let i=0;i<22;i++){const le=load[i]*.5,pe=pvAt(i)*.5;selfUse+=Math.min(le,pe);gridImport+=Math.max(0,le-pe);exportEnergy+=Math.max(0,pe-le)}}
-  const W=900,H=340,L=58,R=18,T=24,B=42,pw=W-L-R,ph=H-T-B,max=Math.max(1,...load,...(hasPv?hourly.slice(6,18).map(Number):[]))*1.12;
-  const x=i=>L+pw*i/22,y=v=>T+ph*(1-v/max);
+  const household=$('loadCustomerMode')?.value==='household',startHour=6,endHour=household?20:17,intervals=(endHour-startHour)*2;
+  const load=loadProfileTimes.map((t,i)=>{const raw=$('loadProfile'+i).value.trim();if(raw==='')throw Error('Vui lòng nhập đủ phụ tải tại các mốc 30 phút.');const v=Number(raw);if(!Number.isFinite(v)||v<0)throw Error('Phụ tải phải là số không âm tại mốc '+t+'.');return v});
+  const energy=load.slice(0,intervals).reduce((sum,v)=>sum+v*.5,0),peak=Math.max(...load),average=energy/(endHour-startHour);
+  const hourly=pvwattsResult?.hourly_average_kw,hasPv=Array.isArray(hourly)&&hourly.length===24;
+  const pvAt=i=>hasPv?Number(hourly[startHour+Math.floor(i/2)]||0):0;
+  const pvEnergy=hasPv?hourly.slice(startHour,endHour).reduce((sum,v)=>sum+Number(v||0),0):0;
+  let selfUse=0,gridImport=0,exportEnergy=0,batteryDischarge=0,batteryExhaustAt=null;
+  const batteryCurve=Array(intervals+1).fill(0);
+  if(hasPv){
+   let remaining=0;
+   if(household){const total=Number($('batTotal')?.value)||((Number($('batKwh')?.value)||loadSizingResult?.batteryKwh||0)*(Number($('batQty')?.value)||1));const dod=(Number($('billDod')?.value)||90)/100;remaining=Math.max(0,total*dod)}
+   for(let i=0;i<intervals;i++){
+    const le=load[i]*.5,pe=pvAt(i)*.5,used=Math.min(le,pe),surplus=Math.max(0,pe-le),deficit=Math.max(0,le-pe);
+    selfUse+=used;exportEnergy+=surplus;
+    let discharge=0;
+    if(household&&deficit>0&&remaining>0){discharge=Math.min(deficit,remaining);remaining-=discharge;batteryDischarge+=discharge;if(remaining<=1e-6&&batteryExhaustAt===null)batteryExhaustAt=startHour+(i+1)/2}
+    batteryCurve[i+1]=discharge/.5;
+    gridImport+=Math.max(0,deficit-discharge);
+   }
+  }
+  const W=900,H=340,L=58,R=18,T=24,B=42,pw=W-L-R,ph=H-T-B;
+  const batteryKw=batteryCurve.map(v=>v),max=Math.max(1,...load,...(hasPv?hourly.slice(startHour,endHour+1).map(Number):[]),...batteryKw)*1.12;
+  const x=i=>L+pw*i/intervals,y=v=>T+ph*(1-v/max);
   let grid='',labels='';
   for(let k=0;k<=4;k++){const val=max*k/4,yy=y(val);grid+='<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="#e4ece8"/><text x="'+(L-9)+'" y="'+(yy+4)+'" text-anchor="end" fill="#687a73" font-size="11">'+val.toFixed(1)+'</text>'}
-  loadProfileTimes.forEach((t,i)=>{if(i%2===0||i===22)labels+='<text x="'+x(i)+'" y="'+(H-13)+'" text-anchor="middle" fill="#52665d" font-size="11">'+t+'</text>'});
+  loadProfileTimes.forEach((t,i)=>{if(i%2===0||i===intervals)labels+='<text x="'+x(i)+'" y="'+(H-13)+'" text-anchor="middle" fill="#52665d" font-size="11">'+t+'</text>'});
   let step='M'+x(0).toFixed(1)+' '+y(load[0]).toFixed(1);
   for(let i=1;i<load.length;i++)step+=' L'+x(i).toFixed(1)+' '+y(load[i-1]).toFixed(1)+' L'+x(i).toFixed(1)+' '+y(load[i]).toFixed(1);
   let pvSmooth='',pts=[];
-  if(hasPv){
-   // Plot the 12 hourly-average PV points and use cubic interpolation for a smooth daytime production curve.
-   pts=hourly.slice(6,18).map((v,i)=>({x:x(i*2),y:y(Number(v||0))}));
-   pvSmooth='M'+pts[0].x.toFixed(1)+' '+pts[0].y.toFixed(1);
-   for(let i=0;i<pts.length-1;i++){
-    const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(pts.length-1,i+2)];
-    const c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6;
-    const c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;
-    pvSmooth+=' C'+c1x.toFixed(1)+' '+c1y.toFixed(1)+','+c2x.toFixed(1)+' '+c2y.toFixed(1)+','+p2.x.toFixed(1)+' '+p2.y.toFixed(1);
-   }
-  }
-  const pvArea=hasPv&&pts.length===12?pvSmooth+' L'+pts[pts.length-1].x.toFixed(1)+' '+y(0).toFixed(1)+' L'+pts[0].x.toFixed(1)+' '+y(0).toFixed(1)+' Z':'';
-  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ miền sản lượng PV màu xanh và đường phụ tải nhà máy màu đỏ từ 6 giờ đến 17 giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
+  if(hasPv){pts=hourly.slice(startHour,endHour+1).map((v,i)=>({x:x(i*2),y:y(Number(v||0))}));pvSmooth='M'+pts[0].x.toFixed(1)+' '+pts[0].y.toFixed(1);for(let i=0;i<pts.length-1;i++){const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(pts.length-1,i+2)],c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6,c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;pvSmooth+=' C'+c1x.toFixed(1)+' '+c1y.toFixed(1)+','+c2x.toFixed(1)+' '+c2y.toFixed(1)+','+p2.x.toFixed(1)+' '+p2.y.toFixed(1)}}
+  const pvArea=hasPv&&pts.length===endHour-startHour+1?pvSmooth+' L'+pts[pts.length-1].x.toFixed(1)+' '+y(0).toFixed(1)+' L'+pts[0].x.toFixed(1)+' '+y(0).toFixed(1)+' Z':'';
+  let batteryPath='M'+x(0).toFixed(1)+' '+y(0).toFixed(1);for(let i=1;i<batteryCurve.length;i++)batteryPath+=' L'+x(i).toFixed(1)+' '+y(batteryCurve[i-1]).toFixed(1)+' L'+x(i).toFixed(1)+' '+y(batteryCurve[i]).toFixed(1);
+  $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ PV, phụ tải và công suất xả pin từ 6 giờ đến '+endHour+' giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+(household&&hasPv?'<path d="'+batteryPath+'" fill="none" stroke="#2878d0" stroke-width="3" stroke-linejoin="round"/>':'')+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div>'+(unit==='%'?'<h3 style="margin:7px 0;color:#16845b;white-space:nowrap">'+value.toFixed(1)+'<span style="font-size:.78em;margin-left:3px">%</span></h3>':'<h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div>')+'</div>';
-  let metrics=card('Điện năng phụ tải 06–17',energy,'kWh/ngày')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình 06–17',average,'kW');
-  if(hasPv){const loadCoverage=energy>0?selfUse/energy*100:0,pvSelfRate=pvEnergy>0?selfUse/pvEnergy*100:0;metrics+=card('PV trung bình 06–17',pvEnergy,'kWh/ngày')+card('PV tự tiêu thụ',selfUse,'kWh/ngày')+card('Điện lưới cần bổ sung',gridImport,'kWh/ngày')+card('PV dư / có thể sạc vào pin lưu trữ',exportEnergy,'kWh/ngày')+card('Tỷ lệ phụ tải được PV đáp ứng',loadCoverage,'%')+card('Tỷ lệ PV được tự tiêu thụ',pvSelfRate,'%')}
+  let metrics=card('Điện năng phụ tải '+startHour+'–'+endHour,energy,'kWh/ngày')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình '+startHour+'–'+endHour,average,'kW');
+  if(hasPv){const loadCoverage=energy>0?selfUse/energy*100:0,pvSelfRate=pvEnergy>0?selfUse/pvEnergy*100:0;metrics+=card('PV trung bình '+startHour+'–'+endHour,pvEnergy,'kWh/ngày')+card('PV tự tiêu thụ',selfUse,'kWh/ngày')+card('Điện lưới cần bổ sung',gridImport,'kWh/ngày')+card('PV dư / có thể sạc vào pin lưu trữ',exportEnergy,'kWh/ngày')+card('Tỷ lệ phụ tải được PV đáp ứng',loadCoverage,'%')+card('Tỷ lệ PV được tự tiêu thụ',pvSelfRate,'%');if(household)metrics+=card('Điện pin xả trong biểu đồ',batteryDischarge,'kWh/ngày')+(batteryExhaustAt!==null?'<div class="gsa-card"><div class="muted">Pin cạn theo mô hình</div><h3 style="margin:7px 0;color:#2878d0">'+batteryExhaustAt.toFixed(1).replace('.',':')+' h</h3><div class="muted">Sau thời điểm này lưới cấp phần thiếu</div></div>':'<div class="gsa-card"><div class="muted">Trạng thái pin lúc 20:00</div><h3 style="margin:7px 0;color:#2878d0">Còn năng lượng</h3><div class="muted">Pin có thể tiếp tục xả sau 20:00</div></div>')}
   $('loadPvMetrics').innerHTML=metrics;
-  $('loadPvNote').textContent=hasPv?'Miền xanh: sản lượng PV trung bình theo giờ (kW). Đường đỏ: phụ tải nhà máy (kW), tính từ 8.760 giá trị PVWatts của năm khí tượng điển hình (mỗi giờ có 365 mẫu). Điện PV tự tiêu thụ = tổng min(PV, phụ tải) trong 22 khoảng 30 phút từ 06:00 đến 17:00; điện lưới bổ sung và điện PV dư được tính theo từng khoảng. Đây là mô phỏng theo ngày trung bình, chưa phản ánh biến động từng ngày/mùa và chưa xét giới hạn công suất inverter, pin lưu trữ.' :'Chưa có dữ liệu PVWatts hourly. Biểu đồ hiện chỉ hiển thị phụ tải; hãy chạy mô phỏng PVWatts để chồng đường sản lượng PV trung bình theo giờ và tính tỷ lệ tự tiêu thụ.';
+  $('loadPvNote').textContent=hasPv?(household?'Miền xanh: PV; đường đỏ: phụ tải hộ dân; đường xanh dương: công suất xả pin. Pin chỉ bắt đầu xả khi PV thấp hơn tải. Mô hình giới hạn năng lượng xả theo tổng dung lượng pin × DoD; nếu pin cạn trước 20:00, đường xả về 0 và điện lưới bù phần thiếu. Nếu còn pin lúc 20:00, biểu đồ dừng tại 20:00 nhưng pin được hiểu là tiếp tục xả sau thời điểm này.':'Miền xanh: PV; đường đỏ: phụ tải nhà máy. Dữ liệu PV lấy trung bình 8.760 giờ của năm khí tượng điển hình.'):'Chưa có dữ liệu PVWatts hourly. Hãy chạy PVWatts để hiển thị đường sản lượng PV.';
   $('loadPvChart').style.display='block';
  }catch(e){$('loadSizingStatus').textContent=e.message}
 }
