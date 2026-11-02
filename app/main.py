@@ -128,6 +128,9 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field' style='align-self:end'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo đường phụ tải từ kWh hóa đơn</button></div>
 </div>
 <div class='muted' id='touScheduleDescription' style='margin:6px 0 12px'></div>
+<h4 style='margin:12px 0 8px'>Chế độ phụ tải</h4>
+<div class='field' style='max-width:520px'><label>Kiểu vận hành</label><select id='plantLoadMode' onchange='togglePlantScheduleMode()'><option value='shift' selected>Theo lịch ca / có tải thay đổi theo giờ</option><option value='continuous'>Chạy liên tục 24/7, phụ tải ngày đêm như nhau</option></select></div>
+<div id='plantScheduleFields'>
 <h4 style='margin:12px 0 8px'>Lịch vận hành nhà máy</h4>
 <div class='grid' style='grid-template-columns:repeat(3,minmax(0,1fr));gap:10px'>
 <div class='field'><label>Số ngày hoạt động/tuần</label><select id='plantWorkDays'><option value='5'>5 ngày (Thứ Hai–Thứ Sáu)</option><option value='6' selected>6 ngày (Thứ Hai–Thứ Bảy)</option><option value='7'>7 ngày</option></select></div>
@@ -140,6 +143,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Mức phụ tải duy trì ngoài ca / ngày nghỉ (%)</label><input id='plantOutsideShare' type='number' min='0' max='100' value='10'></div>
 </div>
 <p class='muted'>Mặc định tải nền ngoài ca/ngày nghỉ là 10% để tạo ước tính ban đầu; hãy chỉnh theo thực tế từng nhà máy. Tỷ lệ máy dừng 80% nghĩa là còn khoảng 20% mức tải vận hành trong giờ nghỉ trưa.</p>
+</div>
 <p class='muted'>Website tự tạo 23 điểm phụ tải sau khi chọn nhóm hóa đơn; có thể chỉnh sửa theo thực tế. Nếu chỉ có hóa đơn một giá hoặc thiếu 3 khung giờ, không đủ cơ sở để tự dựng đường phụ tải theo TOU.</p>
 <div class='row'><button class='btn alt' type='button' onclick='fillFlatLoadProfile()'>Phân bổ đều theo điện ban ngày</button><button class='btn alt' type='button' onclick='clearLoadProfile()'>Xóa dữ liệu nhập</button><button class='btn' type='button' onclick='drawLoadPvComparison()'>Vẽ / cập nhật biểu đồ</button></div>
 <div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
@@ -272,6 +276,10 @@ function updateTouScheduleDescription(){
  :'Khung giờ mới: Cao điểm Thứ Hai–Thứ Bảy 09:30–11:30 và 17:00–20:00; bình thường 04:00–09:30, 11:30–17:00 và 20:00–22:00 (Chủ nhật 04:00–22:00); thấp điểm tất cả các ngày 22:00–04:00 hôm sau.';
 }
 function toMinutes(v){if(!v||!v.includes(':'))return NaN;const p=v.split(':').map(Number);return p[0]*60+p[1]}
+function togglePlantScheduleMode(){
+ const continuous=$('plantLoadMode').value==='continuous';
+ $('plantScheduleFields').style.display=continuous?'none':'block';
+}
 function buildLoadProfileFromTou(){
  try{
   const group=$('billGroupSelect').value;
@@ -280,7 +288,18 @@ function buildLoadProfileFromTou(){
   if(!rows.length)throw Error('Nhóm hóa đơn đã chọn không có dữ liệu.');
   if(!rows.every(x=>['kinh doanh','sản xuất'].some(t=>(x.customer_type||'').toLowerCase().includes(t))))throw Error('Cần chọn nhóm hóa đơn điện sản xuất/kinh doanh.');
   if(rows.some(x=>!x.period_start||!x.period_end))throw Error('Hóa đơn thiếu ngày bắt đầu/kết thúc kỳ.');
-  if(rows.some(x=>!x.tou_kwh||!['normal','peak','offpeak'].every(k=>Number.isFinite(Number(x.tou_kwh[k])))))throw Error('Hóa đơn cần có đủ kWh bình thường, cao điểm và thấp điểm.');
+  const continuous=$('plantLoadMode').value==='continuous';
+  if(!continuous&&rows.some(x=>!x.tou_kwh||!['normal','peak','offpeak'].every(k=>Number.isFinite(Number(x.tou_kwh[k])))))throw Error('Chế độ theo lịch ca cần đủ kWh bình thường, cao điểm và thấp điểm.');
+  if(continuous){
+   let totalKwh=0,totalDays=0;
+   rows.forEach(row=>{const st=new Date(row.period_start+'T00:00:00Z'),en=new Date(row.period_end+'T00:00:00Z');if(!row.period_start||!row.period_end||isNaN(st)||isNaN(en)||en<st)throw Error('Hóa đơn thiếu hoặc sai ngày kỳ: '+(row.filename||''));totalDays+=Math.round((en-st)/86400000)+1;totalKwh+=Number(row.monthly_kwh)||0});
+   if(totalDays<=0||totalKwh<=0)throw Error('Không có tổng kWh hoặc số ngày hợp lệ để dựng phụ tải 24/7.');
+   const flatKw=totalKwh/totalDays/24;
+   loadProfileTimes.forEach((t,i)=>{$('loadProfile'+i).value=flatKw.toFixed(2)});
+   const energy0617=flatKw*11;
+   $('loadSizingStatus').textContent='Đã dựng phụ tải liên tục 24/7 từ '+rows.length+' hóa đơn / '+totalDays+' ngày. Phụ tải trung bình cố định '+flatKw.toFixed(2)+' kW cả ngày và đêm; điện 06:00–17:00 ước tính '+energy0617.toFixed(1)+' kWh/ngày. Không áp dụng lịch ca, nghỉ trưa hoặc tải nền ngoài ca. Đây là mô hình giả định phụ tải phẳng, cần xác nhận bằng dữ liệu đo thực tế.';
+   drawLoadPvComparison();return;
+  }
   const startMin=toMinutes($('plantStart').value),endMin=toMinutes($('plantEnd').value),lunchEnabled=$('plantLunchEnabled').checked,lunchStart=toMinutes($('plantLunchStart').value),lunchEnd=toMinutes($('plantLunchEnd').value);
   const workDays=Number($('plantWorkDays').value),lunchRaw=$('plantLunchOff').value.trim(),outsideRaw=$('plantOutsideShare').value.trim(),lunchOff=lunchEnabled?Number(lunchRaw)/100:0,outsideFactor=Number(outsideRaw)/100;
   if(!(startMin>=0&&endMin>startMin&&endMin<=1440))throw Error('Giờ bắt đầu/kết thúc ca không hợp lệ.');
