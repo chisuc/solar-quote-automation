@@ -120,8 +120,11 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='gsa-card'><div class='muted'>Điện năng cần pin cấp ban đêm</div><h2 id='resNightSupply' style='margin:7px 0'>—</h2><div class='muted'>kWh/ngày</div></div>
 </div>
 <p class='muted' id='loadSizingAssumptions' style='margin-top:10px'></p>
-<div style='border:1px solid #cbded4;border-radius:10px;padding:14px;margin-top:14px;background:#fbfdfc'>
-<h3 style='margin:0 0 6px'>Tùy chọn dung lượng pin mục tiêu</h3>
+<details id='targetBatteryOptions' style='border:1px solid #cbded4;border-radius:10px;margin-top:14px;background:#fbfdfc'>
+<summary style='cursor:pointer;list-style:none;padding:14px;font-weight:700;color:#176b4b;display:flex;align-items:center;justify-content:space-between'>
+<span><span style='margin-right:8px'>＋</span>Tùy chọn dung lượng pin mục tiêu (mở rộng)</span><span class='muted' style='font-weight:400;font-size:12px'>Bấm để thu gọn / mở rộng</span>
+</summary>
+<div style='padding:0 14px 14px'>
 <p class='muted' style='margin:0 0 10px'>Nhập điện năng bạn muốn nạp vào pin mỗi ngày (kWh). Website sẽ tính ngược công suất PV, đồng thời tính dung lượng pin danh định theo DoD.</p>
 <div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));gap:10px'>
 <div class='field'><label>Điện năng muốn nạp vào pin mỗi ngày (kWh)</label><input id='targetBatteryDailyKwh' type='number' min='0' step='0.1' placeholder='Ví dụ: 100'></div>
@@ -130,6 +133,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='row' style='margin-top:8px'><button class='btn' type='button' onclick='calculateTargetBatteryPv()'>Tính PV theo pin mục tiêu</button><button class='btn alt' type='button' onclick='applyTargetBatteryPv()'>Áp dụng phương án này</button></div>
 <div id='targetBatteryPvResult' class='muted' style='margin-top:10px'>Chưa tính phương án pin mục tiêu.</div>
 </div>
+</details>
 <div style='border-top:1px solid #e2eae5;margin-top:16px;padding-top:14px'>
 <h3 style='margin:0 0 6px'>Biểu đồ phụ tải (nhà máy 06:00–17:00 · hộ dân 06:00–20:00)</h3>
 <p class='muted'>Chọn loại phụ tải để website áp dụng mô hình phù hợp: hộ dân dùng điện 24/24 với tỷ lệ ngày/đêm; nhà máy dùng lịch ca, ngày hoạt động và nghỉ trưa.</p>
