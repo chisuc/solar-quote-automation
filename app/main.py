@@ -1241,7 +1241,7 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     if total is None and all(term in normalized.lower() for term in ("chưa bao gồm vat","vat 8%","bao gồm vat")):
         # Some quotation PDFs place the three amounts in a separate right-aligned table column,
         # so text extraction returns the labels first and the amounts together at the end.
-        amounts=re.findall(r"(?<!\\d)(\\d{1,3}(?:[,.]\\d{3})+)(?!\\d)",normalized)
+        amounts=re.findall(r"(?<!\d)(\d{1,3}(?:[,.]\d{3})+)(?!\d)",normalized)
         if len(amounts)>=3:
             parsed=[int(re.sub(r"[^0-9]","",v)) for v in amounts[-3:]]
             if parsed[0]>0 and parsed[1]>=0 and parsed[2]>=parsed[0]:
