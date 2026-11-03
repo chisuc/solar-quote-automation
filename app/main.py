@@ -308,16 +308,15 @@ function choosePvModuleCount(count){
  const pvLabel=$('resPv').parentElement.querySelector('.muted');if(pvLabel)pvLabel.textContent='kWp DC · công suất lắp đặt thực tế';
  $('loadSizingStatus').textContent='Đã chọn '+count+' tấm PV, tổng công suất lắp đặt '+actual.toFixed(3)+' kWp DC. Nếu muốn PVWatts mô phỏng theo công suất thực tế này, hãy bấm Tính toán PVWatts lại.';
 }
-function estimatePvKwpFromHourly(loadCoverage,nightSupply,household){
+function estimatePvKwpFromHourly(loadCoverage,nightSupply,household,fallbackDayKwh){
  const curve=pvwattsResult?.hourly_average_kw,simSize=Number(pvwattsResult?._system_capacity_kw)||0;
  if(!Array.isArray(curve)||curve.length!==24||simSize<=0)return null;
  const start=6,end=household?18:17,steps=(end-start)*2,loads=[];
  for(let i=0;i<steps;i++){
-  const t=String(Math.floor(360+i*30/1)).padStart(4,'0');
   const el=$('loadProfile'+i),raw=el?.value?.trim();
   let kw;
   if(raw!==undefined&&raw!=='')kw=Number(raw);
-  else kw=household?(Number($('billMonthKwh').value)/Math.max(1,Number($('billDays').value))*Number($('billDayShare').value)/100/18):(loadSizingResult?.dayKwh||0)/11;
+  else kw=household?(fallbackDayKwh/18):fallbackDayKwh/11;
   if(!Number.isFinite(kw)||kw<0)return null;
   loads.push(kw);
  }
@@ -349,7 +348,7 @@ function calculateLoadSizing(){
   const nightSupply=night*nightCoverage;
   // PV must cover the selected daytime load AND the energy needed to recharge the battery.
   // The 90% battery efficiency is applied to charging energy; PR accounts for PV/system yield.
-  const hourlySizing=estimatePvKwpFromHourly(pvCoverage*100,nightSupply,$('loadCustomerMode')?.value==='household');
+  const hourlySizing=estimatePvKwpFromHourly(pvCoverage*100,nightSupply,$('loadCustomerMode')?.value==='household',day);
   const pvEnergyForDay=hourlySizing?hourlySizing.requiredSelfUseKwh:day*pvCoverage;
   const pvEnergyForBattery=nightSupply/eff;
   const totalPvEnergy=pvEnergyForDay+pvEnergyForBattery;
