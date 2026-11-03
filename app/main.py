@@ -107,6 +107,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Tỷ lệ pin đáp ứng điện ban đêm (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='100'><small class='muted'>Mặc định 100%; có thể giảm xuống 70–90% tùy mục tiêu đầu tư.</small></div>
 <div class='field'><label>Số giờ nắng đỉnh PSH (h/ngày)</label><input id='billPsh' type='number' min='.5' max='8' step='.1' value='4'></div>
 <div class='field'><label>Độ sâu xả pin DoD (%)</label><input id='billDod' type='number' min='50' max='100' step='1' value='90'></div>
+<div class='field'><label>Hiệu suất sạc pin (%)</label><input id='billChargeEff' type='number' min='50' max='100' step='1' value='95'></div>
+<div class='field'><label>Hiệu suất xả pin (%)</label><input id='billDischargeEff' type='number' min='50' max='100' step='1' value='95'></div>
 </div>
 <div class='row'><button class='btn' type='button' onclick='calculateLoadSizing()'>Tính điện năng & đề xuất</button><button class='btn alt' type='button' onclick='applyLoadSizing()'>Áp dụng vào cấu hình dự án</button></div>
 <div id='loadSizingStatus' class='muted'>Chưa tính toán.</div>
@@ -125,7 +127,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <span><span style='margin-right:8px'>＋</span>Tùy chọn dung lượng pin mục tiêu (mở rộng)</span><span class='muted' style='font-weight:400;font-size:12px'>Bấm để thu gọn / mở rộng</span>
 </summary>
 <div style='padding:0 14px 14px'>
-<p class='muted' style='margin:0 0 10px'>Nhập điện năng bạn muốn nạp vào pin mỗi ngày (kWh). Website sẽ tính ngược công suất PV, đồng thời tính dung lượng pin danh định theo DoD.</p>
+<p class='muted' style='margin:0 0 10px'>Nhập điện năng pin cần cấp cho tải mỗi ngày (kWh). Website tự quy đổi ngược qua hiệu suất xả, hiệu suất sạc và DoD để tìm công suất PV.</p>
 <div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));gap:10px'>
 <div class='field'><label>Điện năng muốn nạp vào pin mỗi ngày (kWh)</label><input id='targetBatteryDailyKwh' type='number' min='0' step='0.1' placeholder='Ví dụ: 100'></div>
 <div class='field'><label>PV cấp tải ban ngày (%)</label><input id='targetPvDayCoverage' type='number' min='0' max='100' step='1' value='80'></div>
@@ -341,22 +343,23 @@ function calculateLoadSizing(){
   const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
   if(monthly<=0||days<=0)throw new Error('Nhập tổng điện năng hóa đơn và số ngày hợp lệ.');
   if(dayShare<0||dayShare>100)throw new Error('Tỷ lệ ban ngày phải từ 0 đến 100%.');
-  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,eff=1.00;
+  const psh=n('billPsh'),pr=0.80,pvCoverage=0.80,nightCoverage=n('billNightCoverage')/100,dod=n('billDod')/100,chargeEff=n('billChargeEff')/100,dischargeEff=n('billDischargeEff')/100;
   if(nightCoverage<0||nightCoverage>1)throw new Error('Tỷ lệ pin đáp ứng điện ban đêm phải từ 0 đến 100%.');
   const daily=monthly/days,day=daily*dayShare/100,night=daily-day;
-  if(psh<=0||pr<=0||dod<=0||eff<=0)throw new Error('Kiểm tra lại các giả định kỹ thuật.');
+  if(psh<=0||pr<=0||dod<=0||chargeEff<=0||chargeEff>1||dischargeEff<=0||dischargeEff>1)throw new Error('Kiểm tra PSH, DoD và hiệu suất sạc/xả pin (50–100%).');
   const nightSupply=night*nightCoverage;
-  // PV must cover the selected daytime load AND the energy needed to recharge the battery.
-  // The 90% battery efficiency is applied to charging energy; PR accounts for PV/system yield.
-  const hourlySizing=estimatePvKwpFromHourly(pvCoverage*100,nightSupply,$('loadCustomerMode')?.value==='household',day);
+  // NightSupply is energy delivered by the battery to loads. Account for discharge
+  // losses to determine stored energy, then charge losses to determine PV surplus.
+  const batteryStoredRequired=nightSupply/dischargeEff;
+  const pvEnergyForBattery=batteryStoredRequired/chargeEff;
+  const hourlySizing=estimatePvKwpFromHourly(pvCoverage*100,pvEnergyForBattery,$('loadCustomerMode')?.value==='household',day);
   const pvEnergyForDay=hourlySizing?hourlySizing.requiredSelfUseKwh:day*pvCoverage;
-  const pvEnergyForBattery=nightSupply/eff;
   const totalPvEnergy=pvEnergyForDay+pvEnergyForBattery;
   const pv=hourlySizing?hourlySizing.pvKwp:totalPvEnergy/(psh*pr);
-  const battery=nightSupply/(dod*eff);
-  loadSizingResult={monthlyKwh:monthly,billDays:days,dayShare,nightShare,dailyKwh:daily,dayKwh:day,nightKwh:night,pvCoverage:pvCoverage*100,nightCoverage:nightCoverage*100,psh,pr:pr*100,dod:dod*100,chargeEfficiency:eff*100,pvEnergyForDayKwh:pvEnergyForDay,pvEnergyForBatteryKwh:pvEnergyForBattery,totalPvEnergyKwh:totalPvEnergy,pvKwp:pv,nightSupplyKwh:nightSupply,batteryKwh:battery,pvSizingMethod:hourlySizing?'PVWatts hourly average + load profile':'PSH / PR estimate',hourlySizing};
+  const battery=nightSupply/(dod*dischargeEff);
+  loadSizingResult={monthlyKwh:monthly,billDays:days,dayShare,nightShare,dailyKwh:daily,dayKwh:day,nightKwh:night,pvCoverage:pvCoverage*100,nightCoverage:nightCoverage*100,psh,pr:pr*100,dod:dod*100,chargeEfficiency:chargeEff*100,dischargeEfficiency:dischargeEff*100,batteryStoredRequiredKwh:batteryStoredRequired,pvEnergyForDayKwh:pvEnergyForDay,pvEnergyForBatteryKwh:pvEnergyForBattery,totalPvEnergyKwh:totalPvEnergy,pvKwp:pv,nightSupplyKwh:nightSupply,batteryKwh:battery,pvSizingMethod:hourlySizing?'PVWatts hourly average + load profile':'PSH / PR estimate',hourlySizing};
   $('resDaily').textContent=daily.toFixed(1);$('resDay').textContent=day.toFixed(1);$('resNight').textContent=night.toFixed(1);$('resPv').textContent=pv.toFixed(1);updatePvModuleRecommendation(pv);$('resBattery').textContent=battery.toFixed(1);$('resNightSupply').textContent=nightSupply.toFixed(1);
-  $('loadSizingAssumptions').textContent=(hourlySizing?'Sizing theo đường PVWatts giờ: cần tự cấp tối thiểu '+pvEnergyForDay.toFixed(1)+' kWh trong khung có nắng và còn dư '+pvEnergyForBattery.toFixed(1)+' kWh để nạp pin. Đã dùng phụ tải '+(hourlySizing.solarWindowLoadKwh).toFixed(1)+' kWh trong khung '+( $('loadCustomerMode')?.value==='household'?'06:00–18:00':'06:00–17:00')+' và chuẩn hóa đường PVWatts từ hệ '+hourlySizing.simulationSizeKwp.toFixed(2)+' kWp.':'Tính sơ bộ theo PSH/PR: '+pvEnergyForDay.toFixed(1)+' kWh/ngày cấp tải ban ngày và '+pvEnergyForBattery.toFixed(1)+' kWh/ngày để sạc pin; tổng nhu cầu PV '+totalPvEnergy.toFixed(1)+' kWh/ngày. ')+'Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; hiệu suất sạc pin '+(eff*100).toFixed(0)+'%; DoD '+(dod*100).toFixed(0)+'%. Kết quả theo PVWatts dùng đường sản lượng trung bình năm, cần kiểm tra tháng sản lượng thấp và giới hạn inverter trước khi chốt thiết kế.';
+  $('loadSizingAssumptions').textContent=(hourlySizing?'Sizing theo đường PVWatts giờ: cần tự cấp tối thiểu '+pvEnergyForDay.toFixed(1)+' kWh trong khung có nắng và còn dư '+pvEnergyForBattery.toFixed(1)+' kWh để nạp pin. Đã dùng phụ tải '+(hourlySizing.solarWindowLoadKwh).toFixed(1)+' kWh trong khung '+( $('loadCustomerMode')?.value==='household'?'06:00–18:00':'06:00–17:00')+' và chuẩn hóa đường PVWatts từ hệ '+hourlySizing.simulationSizeKwp.toFixed(2)+' kWp.':'Tính sơ bộ theo PSH/PR: '+pvEnergyForDay.toFixed(1)+' kWh/ngày cấp tải ban ngày và '+pvEnergyForBattery.toFixed(1)+' kWh/ngày để sạc pin; tổng nhu cầu PV '+totalPvEnergy.toFixed(1)+' kWh/ngày. ')+'Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; hiệu suất sạc pin '+(chargeEff*100).toFixed(0)+'%; hiệu suất xả pin '+(dischargeEff*100).toFixed(0)+'%; DoD '+(dod*100).toFixed(0)+'%. Kết quả theo PVWatts dùng đường sản lượng trung bình năm, cần kiểm tra tháng sản lượng thấp và giới hạn inverter trước khi chốt thiết kế.';
   $('loadSizingResults').style.display='block';$('loadSizingStatus').textContent='Đã tính toán. Kiểm tra lại dữ liệu hóa đơn và các giả định trước khi áp dụng.';return loadSizingResult;
  }catch(e){$('loadSizingStatus').textContent=e.message;loadSizingResult=null;return null}
 }
