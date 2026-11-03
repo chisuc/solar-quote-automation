@@ -254,7 +254,7 @@ let globalSolarAtlasResult=null;
 function renderGSAImages(){if(!gsaImages||!gsaImages.length){$('gsaResult').style.display='none';return}$('gsaResult').style.display='block';for(let i=0;i<4;i++){let item=gsaImages[i];$('gsaImage'+(i+1)).src=item?('/api/files/'+item.id):''}}
 async function captureGlobalSolarAtlas(){try{if(!parseCoordinates())throw Error('Vui lòng kiểm tra tọa độ.');if(!pid)throw Error('Trước tiên hãy lưu dự án bằng nút Lưu dự án.');let b=$('gsaCaptureBtn');b.disabled=true;b.textContent='Đang mở Atlas và chụp ảnh...';$('gsaStatus').textContent='Đang khởi chạy trình duyệt tự động. Có thể mất 1–2 phút.';let r=await api('/api/projects/'+pid+'/gsa-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat:n('lat'),lon:n('lon')})});gsaImages=r.images||[];renderGSAImages();$('gsaStatus').textContent='Đã chụp và lưu '+gsaImages.length+' ảnh vào dự án.';await listFiles()}catch(e){$('gsaStatus').textContent='Chưa hoàn tất: '+e.message}finally{$('gsaCaptureBtn').disabled=false;$('gsaCaptureBtn').textContent='Tự động lấy 4 hình ảnh'}}
 function renderPV(){if(!pvwattsResult){$('pvResult').textContent='Chưa có kết quả mô phỏng.';$('pvChart').style.display='none';return}let a=pvwattsResult.monthly||[];let hourly=Array.isArray(pvwattsResult.hourly_average_kw)?pvwattsResult.hourly_average_kw:[];$('pvResult').innerHTML='<b>Sản lượng AC năm: '+Number(pvwattsResult.annual||0).toLocaleString('vi-VN',{maximumFractionDigits:0})+' kWh</b><br>'+a.map((v,i)=>['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'][i]+': '+Number(v).toLocaleString('vi-VN',{maximumFractionDigits:0})+' kWh').join(' · ')+'<br><b>PV trung bình 06:00–17:00: '+(hourly.length===24?hourly.slice(6,17).reduce((x,v)=>x+Number(v||0),0).toFixed(2)+' kWh/ngày':'Chưa có dữ liệu')+'</b><br><small>Trạm thời tiết: '+esc(pvwattsResult.station||'Chưa có thông tin')+' · '+esc(pvwattsResult.hourly_source||'')+'</small>';drawPVChart(a);if($('loadPvChart').style.display!=='none')drawLoadPvComparison()}
-async function runPVWatts(){try{if(!parseCoordinates())throw Error('Vui lòng kiểm tra lại tọa độ công trình.');if(!azimuthConfirmed)throw Error('Bạn hãy nhấn Xác nhận hướng trên la bàn trước khi tính toán.');$('pvStatus').textContent='Đang lấy sản lượng tháng và 8.760 giá trị giờ từ PVWatts...';let body={lat:n('lat'),lon:n('lon'),system_capacity:n('pvSystemSize')||n('pv'),module_type:n('moduleType'),array_type:n('arrayType'),tilt:n('tilt'),azimuth:n('azimuth'),losses:n('losses'),dc_ac_ratio:n('dcAcRatio'),inv_eff:n('invEff'),gcr:n('gcr'),use_wf_albedo:$('albedoMode').value==='weather'?1:0};if($('albedoMode').value==='manual')body.albedo=n('albedo');let r=await api('/api/pvwatts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});pvwattsResult=r;$('annual').value=Math.round(r.annual||0);syncQuoteAuto();$('pvStatus').textContent='Mô phỏng thành công · PVWatts V'+r.version;renderPV()}catch(e){$('pvStatus').textContent='Không lấy được dữ liệu: '+e.message}}
+async function runPVWatts(){try{if(!parseCoordinates())throw Error('Vui lòng kiểm tra lại tọa độ công trình.');if(!azimuthConfirmed)throw Error('Bạn hãy nhấn Xác nhận hướng trên la bàn trước khi tính toán.');$('pvStatus').textContent='Đang lấy sản lượng tháng và 8.760 giá trị giờ từ PVWatts...';let body={lat:n('lat'),lon:n('lon'),system_capacity:n('pvSystemSize')||n('pv'),module_type:n('moduleType'),array_type:n('arrayType'),tilt:n('tilt'),azimuth:n('azimuth'),losses:n('losses'),dc_ac_ratio:n('dcAcRatio'),inv_eff:n('invEff'),gcr:n('gcr'),use_wf_albedo:$('albedoMode').value==='weather'?1:0};if($('albedoMode').value==='manual')body.albedo=n('albedo');let r=await api('/api/pvwatts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});pvwattsResult=r;pvwattsResult._system_capacity_kw=Number(body.system_capacity)||0;$('annual').value=Math.round(r.annual||0);syncQuoteAuto();$('pvStatus').textContent='Mô phỏng thành công · PVWatts V'+r.version;renderPV()}catch(e){$('pvStatus').textContent='Không lấy được dữ liệu: '+e.message}}
 
 let loadSizingResult=null;
 
@@ -308,6 +308,35 @@ function choosePvModuleCount(count){
  const pvLabel=$('resPv').parentElement.querySelector('.muted');if(pvLabel)pvLabel.textContent='kWp DC · công suất lắp đặt thực tế';
  $('loadSizingStatus').textContent='Đã chọn '+count+' tấm PV, tổng công suất lắp đặt '+actual.toFixed(3)+' kWp DC. Nếu muốn PVWatts mô phỏng theo công suất thực tế này, hãy bấm Tính toán PVWatts lại.';
 }
+function estimatePvKwpFromHourly(loadCoverage,nightSupply,household){
+ const curve=pvwattsResult?.hourly_average_kw,simSize=Number(pvwattsResult?._system_capacity_kw)||0;
+ if(!Array.isArray(curve)||curve.length!==24||simSize<=0)return null;
+ const start=6,end=household?18:17,steps=(end-start)*2,loads=[];
+ for(let i=0;i<steps;i++){
+  const t=String(Math.floor(360+i*30/1)).padStart(4,'0');
+  const el=$('loadProfile'+i),raw=el?.value?.trim();
+  let kw;
+  if(raw!==undefined&&raw!=='')kw=Number(raw);
+  else kw=household?(Number($('billMonthKwh').value)/Math.max(1,Number($('billDays').value))*Number($('billDayShare').value)/100/18):(loadSizingResult?.dayKwh||0)/11;
+  if(!Number.isFinite(kw)||kw<0)return null;
+  loads.push(kw);
+ }
+ const solarLoad=loads.reduce((a,v)=>a+v*.5,0),requiredSelfUse=solarLoad*loadCoverage/100;
+ const pvAt=h=>{const lo=Math.max(0,Math.min(23,Math.floor(h))),hi=Math.min(23,lo+1),f=h-lo;return Number(curve[lo]||0)*(1-f)+Number(curve[hi]||0)*f};
+ const evaluate=kwp=>{
+  let self=0,surplus=0,energy=0;
+  for(let i=0;i<steps;i++){
+   const h=start+(i+.5)/2,pv=pvAt(h)*kwp/simSize,load=loads[i];
+   energy+=pv*.5;self+=Math.min(load,pv)*.5;surplus+=Math.max(0,pv-load)*.5;
+  }
+  return {self,surplus,energy};
+ };
+ let lo=0.1,hi=200;
+ if(evaluate(hi).self+1e-6<requiredSelfUse||evaluate(hi).surplus+1e-6<nightSupply)return null;
+ for(let k=0;k<45;k++){const mid=(lo+hi)/2,v=evaluate(mid);if(v.self>=requiredSelfUse&&v.surplus>=nightSupply)hi=mid;else lo=mid}
+ const result=evaluate(hi);
+ return {pvKwp:hi,solarWindowLoadKwh:solarLoad,requiredSelfUseKwh:requiredSelfUse,pvSelfUseKwh:result.self,pvSurplusKwh:result.surplus,pvEnergyKwh:result.energy,simulationSizeKwp:simSize};
+}
 function calculateLoadSizing(){
  try{
   const monthly=n('billMonthKwh'),days=n('billDays'),dayShare=n('billDayShare'),nightShare=100-dayShare;
@@ -320,14 +349,15 @@ function calculateLoadSizing(){
   const nightSupply=night*nightCoverage;
   // PV must cover the selected daytime load AND the energy needed to recharge the battery.
   // The 90% battery efficiency is applied to charging energy; PR accounts for PV/system yield.
-  const pvEnergyForDay=day*pvCoverage;
+  const hourlySizing=estimatePvKwpFromHourly(pvCoverage*100,nightSupply,$('loadCustomerMode')?.value==='household');
+  const pvEnergyForDay=hourlySizing?hourlySizing.requiredSelfUseKwh:day*pvCoverage;
   const pvEnergyForBattery=nightSupply/eff;
   const totalPvEnergy=pvEnergyForDay+pvEnergyForBattery;
-  const pv=totalPvEnergy/(psh*pr);
+  const pv=hourlySizing?hourlySizing.pvKwp:totalPvEnergy/(psh*pr);
   const battery=nightSupply/(dod*eff);
-  loadSizingResult={monthlyKwh:monthly,billDays:days,dayShare,nightShare,dailyKwh:daily,dayKwh:day,nightKwh:night,pvCoverage:pvCoverage*100,nightCoverage:nightCoverage*100,psh,pr:pr*100,dod:dod*100,chargeEfficiency:eff*100,pvEnergyForDayKwh:pvEnergyForDay,pvEnergyForBatteryKwh:pvEnergyForBattery,totalPvEnergyKwh:totalPvEnergy,pvKwp:pv,nightSupplyKwh:nightSupply,batteryKwh:battery};
+  loadSizingResult={monthlyKwh:monthly,billDays:days,dayShare,nightShare,dailyKwh:daily,dayKwh:day,nightKwh:night,pvCoverage:pvCoverage*100,nightCoverage:nightCoverage*100,psh,pr:pr*100,dod:dod*100,chargeEfficiency:eff*100,pvEnergyForDayKwh:pvEnergyForDay,pvEnergyForBatteryKwh:pvEnergyForBattery,totalPvEnergyKwh:totalPvEnergy,pvKwp:pv,nightSupplyKwh:nightSupply,batteryKwh:battery,pvSizingMethod:hourlySizing?'PVWatts hourly average + load profile':'PSH / PR estimate',hourlySizing};
   $('resDaily').textContent=daily.toFixed(1);$('resDay').textContent=day.toFixed(1);$('resNight').textContent=night.toFixed(1);$('resPv').textContent=pv.toFixed(1);updatePvModuleRecommendation(pv);$('resBattery').textContent=battery.toFixed(1);$('resNightSupply').textContent=nightSupply.toFixed(1);
-  $('loadSizingAssumptions').textContent='Tính PV gồm '+pvEnergyForDay.toFixed(1)+' kWh/ngày cấp tải ban ngày và '+pvEnergyForBattery.toFixed(1)+' kWh/ngày để sạc pin; tổng nhu cầu PV '+totalPvEnergy.toFixed(1)+' kWh/ngày. Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; hiệu suất sạc pin '+(eff*100).toFixed(0)+'%; DoD '+(dod*100).toFixed(0)+'%. Đây là sizing sơ bộ theo điện năng trung bình, cần kiểm tra biểu đồ phụ tải 15–30 phút, sản lượng theo mùa và giới hạn inverter trước khi chốt thiết kế.';
+  $('loadSizingAssumptions').textContent=(hourlySizing?'Sizing theo đường PVWatts giờ: cần tự cấp tối thiểu '+pvEnergyForDay.toFixed(1)+' kWh trong khung có nắng và còn dư '+pvEnergyForBattery.toFixed(1)+' kWh để nạp pin. Đã dùng phụ tải '+(hourlySizing.solarWindowLoadKwh).toFixed(1)+' kWh trong khung '+( $('loadCustomerMode')?.value==='household'?'06:00–18:00':'06:00–17:00')+' và chuẩn hóa đường PVWatts từ hệ '+hourlySizing.simulationSizeKwp.toFixed(2)+' kWp.':'Tính sơ bộ theo PSH/PR: '+pvEnergyForDay.toFixed(1)+' kWh/ngày cấp tải ban ngày và '+pvEnergyForBattery.toFixed(1)+' kWh/ngày để sạc pin; tổng nhu cầu PV '+totalPvEnergy.toFixed(1)+' kWh/ngày. ')+'Giả định: PSH '+psh.toFixed(1)+' giờ/ngày; PR '+(pr*100).toFixed(0)+'%; đáp ứng ban ngày '+(pvCoverage*100).toFixed(0)+'%; đáp ứng ban đêm '+(nightCoverage*100).toFixed(0)+'%; hiệu suất sạc pin '+(eff*100).toFixed(0)+'%; DoD '+(dod*100).toFixed(0)+'%. Kết quả theo PVWatts dùng đường sản lượng trung bình năm, cần kiểm tra tháng sản lượng thấp và giới hạn inverter trước khi chốt thiết kế.';
   $('loadSizingResults').style.display='block';$('loadSizingStatus').textContent='Đã tính toán. Kiểm tra lại dữ liệu hóa đơn và các giả định trước khi áp dụng.';return loadSizingResult;
  }catch(e){$('loadSizingStatus').textContent=e.message;loadSizingResult=null;return null}
 }
