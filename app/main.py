@@ -102,8 +102,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <button class='btn' type='button' onclick='calculateResidentialBill()'>Tính số điện theo 6 bậc</button>
 <div id='residentialBillResult' class='muted' style='margin-top:10px'>Chưa tính tiền điện sinh hoạt.</div>
 </div>
-<div class='field'><label>Tỷ lệ tiêu thụ 00:00–18:00 (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
-<div class='field'><label>Tỷ lệ tiêu thụ 18:00–24:00 (%)</label><input id='billNightShare' type='number' readonly value='35'></div>
+<div class='field'><label>Tỷ lệ điện năng ban ngày 06:00–18:00 (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
+<div class='field'><label>Tỷ lệ điện năng ban đêm 18:00–06:00 (%)</label><input id='billNightShare' type='number' readonly value='35'></div>
 <div class='field'><label>Tỷ lệ pin đáp ứng điện ban đêm (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='100'><small class='muted'>Mặc định 100%; có thể giảm xuống 70–90% tùy mục tiêu đầu tư.</small></div>
 <div class='field'><label>Số giờ nắng đỉnh PSH (h/ngày)</label><input id='billPsh' type='number' min='.5' max='8' step='.1' value='4'></div>
 <div class='field'><label>Độ sâu xả pin DoD (%)</label><input id='billDod' type='number' min='50' max='100' step='1' value='90'></div>
@@ -140,7 +140,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <h3 style='margin:0 0 6px'>Biểu đồ phụ tải (nhà máy 06:00–17:00 · hộ dân 06:00–20:00)</h3>
 <p class='muted'>Chọn loại phụ tải để website áp dụng mô hình phù hợp: hộ dân dùng điện 24/24 với tỷ lệ ngày/đêm; nhà máy dùng lịch ca, ngày hoạt động và nghỉ trưa.</p>
 <div class='field' style='max-width:520px;margin:10px 0'><label>Loại phụ tải</label><select id='loadCustomerMode' onchange='toggleLoadCustomerMode()'><option value='household'>1. Hộ dân</option><option value='factory' selected>2. Nhà máy</option></select></div>
-<div id='householdLoadInfo' class='muted' style='display:none;margin:8px 0 12px'>Hộ dân sử dụng điện 24/24. Phân bổ điện năng theo hai khoảng: ban ngày 00:00–18:00 và ban đêm 18:00–24:00. Biểu đồ hiển thị 06:00–20:00: phụ tải ban ngày đến 18:00, sau đó chuyển sang phụ tải buổi tối. Không áp dụng lịch ca hoặc nghỉ trưa.<div style='margin-top:8px'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo phụ tải hộ dân từ kWh hóa đơn</button></div></div>
+<div id='householdLoadInfo' class='muted' style='display:none;margin:8px 0 12px'>Hộ dân sử dụng điện 24/24. Phân bổ điện năng theo hai khoảng bằng nhau: ban ngày 06:00–18:00 (12 giờ) và ban đêm 18:00–06:00 hôm sau (12 giờ). Biểu đồ vẫn hiển thị 06:00–20:00; phần 00:00–06:00 được tính vào điện năng ban đêm và nhu cầu pin nhưng không hiển thị. Không áp dụng lịch ca hoặc nghỉ trưa.<div style='margin-top:8px'><button class='btn' type='button' onclick='buildLoadProfileFromTou()'>Tạo phụ tải hộ dân từ kWh hóa đơn</button></div></div>
 <div id='factoryLoadFields'>
 <div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));margin:10px 0'>
 <div class='field'><label>Khung giờ tính toán</label><select id='touScheduleMode'><option value='old'>KHUNG GIỜ CŨ</option><option value='new'>KHUNG GIỜ MỚI</option></select></div>
@@ -318,7 +318,7 @@ function estimatePvKwpFromHourly(loadCoverage,nightSupply,household,fallbackDayK
   const el=$('loadProfile'+i),raw=el?.value?.trim();
   let kw;
   if(raw!==undefined&&raw!=='')kw=Number(raw);
-  else kw=household?(fallbackDayKwh/18):fallbackDayKwh/11;
+  else kw=household?(fallbackDayKwh/12):fallbackDayKwh/11;
   if(!Number.isFinite(kw)||kw<0)return null;
   loads.push(kw);
  }
@@ -426,11 +426,11 @@ function buildLoadProfileFromTou(){
     sourceLabel='tổng hóa đơn đã nhập / '+totalDays+' ngày';
    }
    const dayShare=Number($('billDayShare').value),nightShare=Number($('billNightShare').value);
-   if(!Number.isFinite(dayShare)||dayShare<0||dayShare>100||!Number.isFinite(nightShare)||nightShare<0||nightShare>100||Math.abs(dayShare+nightShare-100)>.11)throw Error('Tỷ lệ 00:00–18:00 và 18:00–24:00 phải hợp lệ và tổng bằng 100%.');
+   if(!Number.isFinite(dayShare)||dayShare<0||dayShare>100||!Number.isFinite(nightShare)||nightShare<0||nightShare>100||Math.abs(dayShare+nightShare-100)>.11)throw Error('Tỷ lệ điện năng ban ngày 06:00–18:00 và ban đêm 18:00–06:00 phải hợp lệ và tổng bằng 100%.');
    if(totalDays<=0||totalKwh<=0)throw Error('Không có tổng kWh hoặc số ngày hợp lệ để dựng phụ tải hộ dân.');
-   const dailyKwh=totalKwh/totalDays,dayKwh=dailyKwh*dayShare/100,nightKwh=dailyKwh*nightShare/100,dayKw=dayKwh/18,nightKw=nightKwh/6;
+   const dailyKwh=totalKwh/totalDays,dayKwh=dailyKwh*dayShare/100,nightKwh=dailyKwh*nightShare/100,dayKw=dayKwh/12,nightKw=nightKwh/12;
    loadProfileTimes.forEach((t,i)=>{$('loadProfile'+i).value=(Number(t.slice(0,2))<18?dayKw:nightKw).toFixed(2)});
-   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân từ '+sourceLabel+'. Tổng trung bình '+dailyKwh.toFixed(2)+' kWh/ngày; 00:00–18:00: '+dayShare.toFixed(1)+'% ('+dayKwh.toFixed(2)+' kWh/ngày, '+dayKw.toFixed(2)+' kW); 18:00–24:00: '+nightShare.toFixed(1)+'% ('+nightKwh.toFixed(2)+' kWh/ngày, '+nightKw.toFixed(2)+' kW). Biểu đồ hiển thị 06:00–20:00 và chuyển sang tải buổi tối từ 18:00.';
+   $('loadSizingStatus').textContent='Đã dựng phụ tải hộ dân từ '+sourceLabel+'. Tổng trung bình '+dailyKwh.toFixed(2)+' kWh/ngày; ban ngày 06:00–18:00: '+dayShare.toFixed(1)+'% ('+dayKwh.toFixed(2)+' kWh/ngày, '+dayKw.toFixed(2)+' kW); ban đêm 18:00–06:00: '+nightShare.toFixed(1)+'% ('+nightKwh.toFixed(2)+' kWh/ngày, '+nightKw.toFixed(2)+' kW). Biểu đồ vẫn hiển thị 06:00–20:00; 00:00–06:00 được tính vào nhu cầu pin.';
    drawLoadPvComparison();return;
   }
   if(!group)throw Error('Hãy chọn nhóm hóa đơn trước.');
