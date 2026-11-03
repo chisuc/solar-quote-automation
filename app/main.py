@@ -1219,25 +1219,25 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     try:
         from pypdf import PdfReader
         reader=PdfReader(io.BytesIO(data))
-        text_content="\\n".join(page.extract_text() or "" for page in reader.pages)
+        text_content="\n".join(page.extract_text() or "" for page in reader.pages)
     except Exception as exc:
         raise HTTPException(422,"Không thể đọc cấu trúc PDF: "+str(exc)[:200])
     method="text"
-    if len(re.sub(r"\\s+","",text_content))<30:
+    if len(re.sub(r"\s+","",text_content))<30:
         raise HTTPException(422,"PDF hiện chưa có lớp văn bản để đọc tự động. Vui lòng dùng PDF có thể chọn/copy chữ hoặc tải bản PDF rõ nét có OCR.")
-    normalized=text_content.replace("\\u00a0"," ")
+    normalized=text_content.replace("\u00a0"," ")
     def amount_near(pattern):
         match=re.search(pattern,normalized,re.I|re.M)
         if not match:return None
         raw=match.group(1).strip()
         digits=re.sub(r"[^0-9]","",raw)
         return int(digits) if digits else None
-    total=amount_near(r"(?:Tổng\\s*tiền\\s*\\(\\s*bao\\s*gồm\\s*VAT\\s*\\)|Tổng\\s*tiền\\s*đã\\s*bao\\s*gồm\\s*VAT|Tổng\\s*cộng\\s*(?:đã\\s*)?bao\\s*gồm\\s*VAT)[^0-9]{0,80}([0-9][0-9.,\\s]{3,})")
-    subtotal=amount_near(r"(?:Tổng\\s*tiền\\s*\\(\\s*Chưa\\s*bao\\s*gồm\\s*VAT\\s*\\)|Tổng\\s*tiền\\s*trước\\s*VAT|Cộng\\s*tiền\\s*hàng)[^0-9]{0,80}([0-9][0-9.,\\s]{3,})")
-    vat=amount_near(r"(?:VAT\\s*(?:8|10)?\\s*%?|Thuế\\s*GTGT)[^0-9]{0,80}([0-9][0-9.,\\s]{3,})")
+    total=amount_near(r"(?:Tổng\s*tiền\s*\(\s*bao\s*gồm\s*VAT\s*\)|Tổng\s*tiền\s*đã\s*bao\s*gồm\s*VAT|Tổng\s*cộng\s*(?:đã\s*)?bao\s*gồm\s*VAT)[^0-9]{0,80}([0-9][0-9.,\s]{3,})")
+    subtotal=amount_near(r"(?:Tổng\s*tiền\s*\(\s*Chưa\s*bao\s*gồm\s*VAT\s*\)|Tổng\s*tiền\s*trước\s*VAT|Cộng\s*tiền\s*hàng)[^0-9]{0,80}([0-9][0-9.,\s]{3,})")
+    vat=amount_near(r"(?:VAT\s*(?:8|10)?\s*%?|Thuế\s*GTGT)[^0-9]{0,80}([0-9][0-9.,\s]{3,})")
     if total is None:
         # Fallback: prefer a clearly labeled final payment amount, never a line-item amount.
-        total=amount_near(r"(?:Tổng\\s*thanh\\s*toán|Tổng\\s*cộng|Thành\\s*tiền\\s*thanh\\s*toán)[^0-9]{0,80}([0-9][0-9.,\\s]{3,})")
+        total=amount_near(r"(?:Tổng\s*thanh\s*toán|Tổng\s*cộng|Thành\s*tiền\s*thanh\s*toán)[^0-9]{0,80}([0-9][0-9.,\s]{3,})")
     if total is None:
         raise HTTPException(422,"Không tìm thấy dòng tổng tiền đã gồm VAT. Hãy kiểm tra báo giá có dòng tổng cộng rõ ràng.")
     if subtotal is None and vat is not None: subtotal=max(0,total-vat)
