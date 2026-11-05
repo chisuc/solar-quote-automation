@@ -93,13 +93,13 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Sản lượng trung bình (kWh/ngày)</label><input id='billDailyAverage' type='number' readonly placeholder='Tự tính từ tổng kWh / số ngày'></div>
 <div class='field'><label>Giá điện trung bình (đ/kWh)</label><input id='billAveragePrice' type='number' readonly placeholder='Tự tính từ tổng tiền / tổng kWh'></div>
 <div style='grid-column:1/-1;border:1px solid #cbded4;border-radius:10px;padding:14px;background:#fbfdfc;margin:4px 0'>
-<h3 style='margin:0 0 6px'>Quy đổi tiền điện sinh hoạt thành sản lượng theo 6 bậc</h3>
-<p class='muted' style='margin:0 0 10px'>Nhập tổng tiền điện sinh hoạt. Công cụ tính ngược số kWh theo biểu giá 6 bậc bạn cung cấp (đơn giá chưa VAT 8%).</p>
+<h3 style='margin:0 0 6px'>Quy đổi tiền điện sinh hoạt thành sản lượng theo 5 bậc</h3>
+<p class='muted' style='margin:0 0 10px'>Nhập tổng tiền điện sinh hoạt. Công cụ tính ngược số kWh theo biểu giá 5 bậc áp dụng từ 01/11/2026 (đơn giá chưa VAT 8%).</p>
 <div class='grid' style='grid-template-columns:repeat(2,minmax(0,1fr));gap:10px'>
 <div class='field'><label>Tổng tiền điện (đồng)</label><input id='residentialBillAmount' type='number' min='0' step='1000' placeholder='Ví dụ: 1500000'></div>
 <div class='field'><label style='display:flex;align-items:center;gap:8px'><input id='residentialVatIncluded' type='checkbox' checked style='width:auto'> Số tiền đã bao gồm VAT 8%</label><small class='muted'>Bỏ chọn nếu số tiền nhập chưa VAT.</small></div>
 </div>
-<button class='btn' type='button' onclick='calculateResidentialBill()'>Tính số điện theo 6 bậc</button>
+<button class='btn' type='button' onclick='calculateResidentialBill()'>Tính số điện theo 5 bậc</button>
 <div id='residentialBillResult' class='muted' style='margin-top:10px'>Chưa tính tiền điện sinh hoạt.</div>
 </div>
 <div class='field'><label>Tỷ lệ điện năng ban ngày 06:00–18:00 (%)</label><input id='billDayShare' type='number' min='0' max='100' step='.1' value='65'></div>
@@ -270,12 +270,11 @@ function calculateResidentialBill(){
   const vatIncluded=$('residentialVatIncluded').checked;
   const beforeVat=vatIncluded?amount/1.08:amount;
   const tiers=[
-   {name:'Bậc 1',limit:50,rate:1984},
-   {name:'Bậc 2',limit:50,rate:2050},
-   {name:'Bậc 3',limit:100,rate:2380},
-   {name:'Bậc 4',limit:100,rate:2998},
-   {name:'Bậc 5',limit:100,rate:3350},
-   {name:'Bậc 6',limit:Infinity,rate:3460}
+   {name:'Bậc 1',limit:100,rate:1901},
+   {name:'Bậc 2',limit:100,rate:2289},
+   {name:'Bậc 3',limit:200,rate:2894},
+   {name:'Bậc 4',limit:300,rate:3456},
+   {name:'Bậc 5',limit:Infinity,rate:3844}
   ];
   let remaining=beforeVat,kwh=0,html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px">Bậc</th><th style="text-align:right;padding:6px">Đơn giá</th><th style="text-align:right;padding:6px">Sản lượng</th><th style="text-align:right;padding:6px">Thành tiền</th></tr></thead><tbody>';
   tiers.forEach(t=>{
@@ -288,7 +287,7 @@ function calculateResidentialBill(){
   });
   const vat=beforeVat*.08,total=beforeVat+vat,daily=Number($('billDays').value)>0?kwh/Number($('billDays').value):0;
   html+='</tbody></table></div><div class="grid" style="margin-top:10px"><div class="gsa-card"><div class="muted">Tổng sản lượng ước tính</div><h2>'+kwh.toFixed(2)+'</h2><div class="muted">kWh</div></div><div class="gsa-card"><div class="muted">Tiền trước VAT</div><h2>'+beforeVat.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</h2><div class="muted">đồng</div></div><div class="gsa-card"><div class="muted">VAT 8%</div><h2>'+vat.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</h2><div class="muted">đồng</div></div></div>';
-  $('residentialBillResult').innerHTML=html+'<p class="muted">Kết quả là ước tính theo đúng biểu giá 6 bậc đã nhập; giả định toàn bộ số tiền chỉ gồm tiền điện bậc thang và VAT 8%, chưa tính các khoản điều chỉnh khác nếu có.</p>';
+  $('residentialBillResult').innerHTML=html+'<p class="muted">Kết quả là ước tính theo biểu giá 5 bậc áp dụng từ 01/11/2026; giả định toàn bộ số tiền chỉ gồm tiền điện bậc thang và VAT 8%, chưa tính các khoản điều chỉnh khác nếu có.</p>';
   $('billMonthKwh').value=kwh.toFixed(2);
   $('billDailyAverage').value=Number($('billDays').value)>0?daily.toFixed(2):'';
   $('billAveragePrice').value=(amount/kwh).toFixed(2);syncQuoteAuto();
