@@ -766,7 +766,8 @@ async function delP(id){if(confirm('Xóa dự án?')){await api('/api/projects/'
 function fresh(){pid=null;loadSizingResult=null;clearLoadProfile();$('billFiles').value='';billBatchResults=[];$('billBatchSummary').textContent='Chưa có dữ liệu hóa đơn.';$('billGroupSummary').innerHTML='';$('billGroupSelect').innerHTML='<option value="">Chọn nhóm hóa đơn</option>';$('billBatchTable').style.display='none';$('billMonthKwh').value='';$('billDays').value=30;$('billDayShare').value=65;calcBillNightShare();$('loadSizingResults').style.display='none';$('billReadStatus').textContent='';$('loadSizingStatus').textContent='Chưa tính toán.';financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='';ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('date').value=new Date().toISOString().slice(0,10);$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;pvwattsResult=null;globalSolarAtlasResult=null;gsaImages=[];renderGSAImages();calc()}
 async function upload(){if(!pid){alert('Hãy lưu dự án trước');return}let fd=new FormData();for(let f of $('files').files)fd.append('files',f);let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});if(!r.ok){alert('Tải file lỗi');return}$('files').value='';listFiles()}
 async function uploadProjectImages(category){if(!pid){alert('Hãy lưu dự án trước khi tải ảnh.');return}let input=category==='roof-real'?$ ('roofRealImages'):$('roofPvImages');let files=[...input.files];if(!files.length){alert('Vui lòng chọn ảnh trước.');return}let fd=new FormData();for(let f of files)fd.append('files',f);fd.append('category',category);try{let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Tải ảnh không thành công');input.value='';await listFiles();$('status').textContent='Đã tải '+d.length+' ảnh lên dự án.'}catch(e){alert(e.message)}}
-async function renderProjectImageLists(items){let real=items.filter(x=>String(x.name||'').startsWith('roof-real__')),pv=items.filter(x=>String(x.name||'').startsWith('roof-pv__'));const render=(a)=>a.length?a.map(x=>'<div style="display:flex;align-items:center;gap:8px;margin:7px 0"><img src="/api/files/'+x.id+'" style="width:76px;height:54px;object-fit:cover;border-radius:6px;border:1px solid #dce5e1"><a href="/api/files/'+x.id+'" target="_blank">'+esc(x.name.replace(/^roof-(real|pv)__/,''))+'</a></div>').join(''):'Chưa có ảnh.';$('roofRealImageList').innerHTML=render(real);$('roofPvImageList').innerHTML=render(pv)}
+async function deleteProjectImage(fid){if(!pid||!fid)return;if(!confirm('Bạn có chắc muốn xóa ảnh này khỏi dự án?'))return;try{const r=await fetch('/api/projects/'+pid+'/files/'+encodeURIComponent(fid),{method:'DELETE'});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không xóa được ảnh');await listFiles();$('status').textContent='Đã xóa ảnh khỏi dự án.'}catch(e){alert(e.message)}}
+async function renderProjectImageLists(items){let real=items.filter(x=>String(x.name||'').startsWith('roof-real__')),pv=items.filter(x=>String(x.name||'').startsWith('roof-pv__'));const render=(a)=>a.length?a.map(x=>'<div style="display:flex;align-items:center;gap:8px;margin:7px 0"><img src="/api/files/'+x.id+'" style="width:76px;height:54px;object-fit:cover;border-radius:6px;border:1px solid #dce5e1"><a href="/api/files/'+x.id+'" target="_blank">'+esc(x.name.replace(/^roof-(real|pv)__/,''))+'</a><button class="btn alt" type="button" style="padding:5px 10px;margin-left:6px" onclick="deleteProjectImage(&quot;'+x.id+'&quot;)">Xóa</button></div>').join(''):'Chưa có ảnh.';$('roofRealImageList').innerHTML=render(real);$('roofPvImageList').innerHTML=render(pv)}
 
 async function listFiles(){if(!pid)return;let a=await api('/api/projects/'+pid+'/files');let ordinary=a.filter(x=>!String(x.name||'').startsWith('roof-real__')&&!String(x.name||'').startsWith('roof-pv__'));$('fileList').innerHTML=ordinary.map(x=>`<div><a href='/api/files/${x.id}'>${esc(x.name)}</a></div>`).join('')||'Chưa có file';renderProjectImageLists(a);return a}
 function exportJson(){let b=new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='du-an.json';a.click()}
@@ -2122,6 +2123,16 @@ async def upload(pid:str,request:Request,files:list[UploadFile]=File(...),catego
             raise
         out.append({"id":fid,"name":name})
     return out
+
+@app.delete("/api/projects/{pid}/files/{fid}")
+def delete_project_file(pid:str,fid:str,request:Request):
+    auth(request)
+    rows=sb_request("GET",db("uploads"),params={"id":f"eq.{fid}","pid":f"eq.{pid}","select":"id,path,name"}).json()
+    if not rows: raise HTTPException(404,"Không tìm thấy ảnh trong dự án này.")
+    item=rows[0]
+    sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[item["path"]]})
+    sb_request("DELETE",db("uploads"),params={"id":f"eq.{fid}","pid":f"eq.{pid}"},headers={"Prefer":"return=minimal"})
+    return {"ok":True,"id":fid}
 
 @app.get("/api/projects/{pid}/files")
 def files(pid:str,request:Request):
