@@ -91,6 +91,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Tổng điện năng hóa đơn (kWh)</label><input id='billMonthKwh' type='number' min='0' step='.01' placeholder='Nhập hoặc kiểm tra số đọc được'></div>
 <div class='field'><label>Số ngày của kỳ hóa đơn</label><input id='billDays' type='number' min='1' step='1' value='30'></div>
 <div class='field'><label>Sản lượng trung bình (kWh/ngày)</label><input id='billDailyAverage' type='number' readonly placeholder='Tự tính từ tổng kWh / số ngày'></div>
+<div class='field'><label>Sản lượng trung bình tháng (kWh/tháng)</label><input id='billMonthlyAverageKwh' type='number' readonly placeholder='Quy đổi theo 30 ngày'></div>
+<div class='field'><label>Tiền điện trung bình tháng (đồng/tháng)</label><input id='billMonthlyAverageMoney' type='number' readonly placeholder='Quy đổi theo 30 ngày'></div>
 <div class='field'><label>Giá điện trung bình (đ/kWh)</label><input id='billAveragePrice' type='number' readonly placeholder='Tự tính từ tổng tiền / tổng kWh'></div>
 <div style='grid-column:1/-1;border:1px solid #cbded4;border-radius:10px;padding:14px;background:#fbfdfc;margin:4px 0'>
 <h3 style='margin:0 0 6px'>Quy đổi tiền điện sinh hoạt thành sản lượng theo 5 bậc</h3>
@@ -592,7 +594,7 @@ function applyBillGroup(){
  const key=$('billGroupSelect').value;const rows=billBatchResults.filter(x=>x._included&&billGroupKey(x)===key);
  if(!rows.length)return;
  const kwh=rows.reduce((a,x)=>a+(Number(x.monthly_kwh)||0),0),days=rows.reduce((a,x)=>a+(Number(x.period_days)||0),0);
- $('billMonthKwh').value=kwh.toFixed(2);$('billDays').value=days||30;$('billDailyAverage').value=days>0?(kwh/days).toFixed(2):'';const money=rows.reduce((a,x)=>a+(Number(x.amount_vnd)||0),0);$('billAveragePrice').value=kwh>0&&money>0?(money/kwh).toFixed(2):'';syncQuoteAuto();loadSizingResult=null;
+ $('billMonthKwh').value=kwh.toFixed(2);$('billDays').value=days||30;$('billDailyAverage').value=days>0?(kwh/days).toFixed(2):'';const money=rows.reduce((a,x)=>a+(Number(x.amount_vnd)||0),0);$('billAveragePrice').value=kwh>0&&money>0?(money/kwh).toFixed(2):'';const normalizedMonthFactor=days>0?30/days:0;$('billMonthlyAverageKwh').value=days>0?(kwh*normalizedMonthFactor).toFixed(2):'';$('billMonthlyAverageMoney').value=days>0?(money*normalizedMonthFactor).toFixed(0):'';syncQuoteAuto();loadSizingResult=null;
  $('billReadStatus').textContent='Đã chọn nhóm '+key+' để tính sizing. Các nhóm khác không bị cộng chung.';
  if(rows.every(x=>x.period_start&&x.period_end&&x.tou_kwh&&['normal','peak','offpeak'].every(k=>Number.isFinite(Number(x.tou_kwh[k])))))buildLoadProfileFromTou();
 }
@@ -635,7 +637,7 @@ function renderBillBatch(){
  $('billBatchTable').style.display=rows.length?'table':'none';
  $('billBatchRows').innerHTML=rows.map((x,i)=>'<tr style="border-top:1px solid #dce5e1"><td>'+esc(x.filename||'')+'<br><small>'+esc(x.period||'')+'</small></td><td>'+esc(x.customer_type||'Chưa rõ')+'</td><td>'+esc(x.tariff_type||'—')+'</td><td>'+esc(Object.entries(x.tiers||{}).map(([k,v])=>k.replace('bac_','Bậc ')+' '+billFmt(v.kwh)+' kWh').join('; ')||'—')+'</td><td>'+esc(x.voltage||'—')+'</td><td>'+billEditInput(i,'tou_kwh',(x.tou_kwh||{}).normal,'1','normal')+'</td><td>'+billEditInput(i,'tou_kwh',(x.tou_kwh||{}).peak,'1','peak')+'</td><td>'+billEditInput(i,'tou_kwh',(x.tou_kwh||{}).offpeak,'1','offpeak')+'</td><td>'+billEditInput(i,'monthly_kwh',x.monthly_kwh,'0.01')+'</td><td>'+billEditInput(i,'period_days',x.period_days)+'</td><td>'+billEditInput(i,'amount_vnd',x.amount_vnd,'1')+'</td><td>'+(x.average_price_vnd_kwh?billFmt(x.average_price_vnd_kwh):'—')+'</td><td>'+(x._duplicate?'Trùng kỳ — không cộng':x.error?esc(x.error):x._included?'Được tính':'Không tính')+(x._manualEdited?' · Đã sửa tay':'')+'</td></tr>').join('');
  if(groupKeys.length===1){$('billGroupSelect').value=groupKeys[0];applyBillGroup()}
- else if(groupKeys.length>1){$('billMonthKwh').value='';$('billDays').value=30;loadSizingResult=null;$('billReadStatus').textContent='Có nhiều nhóm loại điện/cấp áp. Chọn đúng nhóm trước khi tính sizing.'}
+ else if(groupKeys.length>1){$('billMonthKwh').value='';$('billDays').value=30;$('billDailyAverage').value='';$('billMonthlyAverageKwh').value='';$('billMonthlyAverageMoney').value='';$('billAveragePrice').value='';loadSizingResult=null;$('billReadStatus').textContent='Có nhiều nhóm loại điện/cấp áp. Chọn đúng nhóm trước khi tính sizing.'}
 }
 
 let billOcrWorker=null;
@@ -745,7 +747,7 @@ async function readBills(){
  $('loadSizingStatus').textContent='PDF được trích xuất văn bản gốc; ảnh được OCR trên trình duyệt. Kiểm tra số liệu từng hóa đơn trước khi tính công suất.';
 }
 $('billDayShare').addEventListener('input',()=>{calcBillNightShare();loadSizingResult=null});
-for(const id of ['billMonthKwh','billDays','billPsh','billDod'])$(id).addEventListener('input',()=>{loadSizingResult=null});
+for(const id of ['billMonthKwh','billDays','billMonthlyAverageKwh','billMonthlyAverageMoney','billPsh','billDod'])$(id).addEventListener('input',()=>{loadSizingResult=null});
 
 async function api(u,opt={}){let r=await fetch(u,opt);if(r.status===401){location='/login-page';throw Error('Cần đăng nhập lại')}if(!r.ok)throw Error((await r.json()).detail||'Có lỗi');return r.json()}
 async function save(){try{let p=payload();p.folderId=currentFolderId;let r=pid?await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}):await api('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});pid=r.id;$('status').textContent='Đã lưu dự án vào thư mục.';list()}catch(e){$('status').textContent=e.message}}
