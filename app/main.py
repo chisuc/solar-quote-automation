@@ -233,7 +233,7 @@ async function applyFinancialOverrides(){try{financialOverrides=readFinancialOve
 function resetFinancialOverrides(){financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='Đã xóa các điều chỉnh; sẽ sử dụng thông số mặc định của mẫu PTTC.'}
 async function uploadProjectTemplates(){if(!pid){$('projectTemplateStatus').textContent='Hãy lưu dự án trước khi chọn thư mục mẫu.';return}const files=Array.from($('projectTemplateFolder').files||[]);if(!files.length){$('projectTemplateStatus').textContent='Bạn chưa chọn thư mục hoặc thư mục đang trống.';return}const xlsx=files.filter(f=>f.name.toLowerCase().endsWith('.xlsx')),pptx=files.filter(f=>f.name.toLowerCase().endsWith('.pptx'));const errors=[];if(xlsx.length!==1)errors.push('Cần đúng 1 file PTTC khung .xlsx (hiện có '+xlsx.length+').');if(pptx.length!==1)errors.push('Cần đúng 1 file báo giá PowerPoint khung .pptx (hiện có '+pptx.length+').');if(errors.length){$('projectTemplateStatus').textContent='Thư mục chưa hợp lệ: '+errors.join(' ');return}const fd=new FormData();files.forEach(f=>fd.append('files',f,f.name));try{$('projectTemplateStatus').textContent='Đang kiểm tra cấu trúc Excel và PowerPoint...';const r=await fetch('/api/projects/'+pid+'/templates',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không thể sử dụng thư mục mẫu');$('projectTemplateStatus').textContent='Thư mục hợp lệ: '+d.financial_name+' và '+d.presentation_name+' đã được gắn với dự án hiện tại.';$('projectTemplateFolderName').textContent='Đã chọn: '+(files[0].webkitRelativePath||files[0].name).split('/')[0];}catch(e){$('projectTemplateStatus').textContent='Lỗi thư mục mẫu: '+e.message}}
 async function generateFinancialReport(){if(!pid){$('financialReportStatus').textContent='Hãy lưu dự án trước khi tạo báo cáo PTTC.';return}try{$('financialReportStatus').textContent='Đang tạo file Excel PTTC...';let p=payload();let r=await api('/api/projects/'+pid+'/financial-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:p})});financialReportId=r.id;let savedPayload=payload();savedPayload.financialReportId=r.id;await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(savedPayload)});$('financialReportStatus').innerHTML='Đã tạo báo cáo: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('financialReportStatus').textContent='Không tạo được báo cáo: '+e.message}}
-async function parseQuotePdf(){const f=$('quotePdfFile').files[0];if(!f){$('quotePdfStatus').textContent='Bạn hãy chọn báo giá PDF trước.';return}if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){$('quotePdfStatus').textContent='Chỉ hỗ trợ file PDF.';return}const fd=new FormData();fd.append('file',f);try{$('quotePdfStatus').textContent='Đang đọc nội dung báo giá PDF...';const resp=await fetch('/api/quote-parse',{method:'POST',body:fd});let data={};try{data=await resp.json()}catch(_){}if(!resp.ok)throw Error(data.detail||'Không đọc được báo giá.');$('investmentTotal').value=Math.round(data.total_including_vat||0);$('quotePdfStatus').textContent='Đã đọc '+esc(f.name)+': trước VAT '+Number(data.subtotal||0).toLocaleString('vi-VN')+' đ · VAT '+Number(data.vat||0).toLocaleString('vi-VN')+' đ · Tổng đầu tư gồm VAT '+Number(data.total_including_vat||0).toLocaleString('vi-VN')+' đ. '+(data.method==='text'?'Đọc văn bản PDF':'Đọc OCR')+'.';}catch(e){$('quotePdfStatus').textContent='Không đọc được báo giá: '+e.message}}
+async function parseQuotePdf(){const f=$('quotePdfFile').files[0];if(!f){$('quotePdfStatus').textContent='Bạn hãy chọn báo giá PDF trước.';return}if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){$('quotePdfStatus').textContent='Chỉ hỗ trợ file PDF.';return}const fd=new FormData();fd.append('file',f);try{$('quotePdfStatus').textContent='Đang đọc nội dung báo giá PDF...';const resp=await fetch('/api/quote-parse',{method:'POST',body:fd});let data={};try{data=await resp.json()}catch(_){}if(!resp.ok)throw Error(data.detail||'Không đọc được báo giá.');$('investmentTotal').value=Math.round(data.total_including_vat||0);const put=(id,v)=>{if(v!==null&&v!==undefined&&v!==''&&$(id))$(id).value=v};put('panelBrand',data.panel_brand);put('panelW',data.panel_wp);put('panelQty',data.panel_qty);put('invModel',data.inverter_model);put('invKw',data.inverter_kw);put('phase',data.phase);put('batModel',data.battery_model);put('batKwh',data.battery_kwh);put('batQty',data.battery_qty);if(data.panel_wp&&data.panel_qty)put('pv',(Number(data.panel_wp)*Number(data.panel_qty)/1000).toFixed(3));if(data.battery_kwh&&data.battery_qty)put('batTotal',(Number(data.battery_kwh)*Number(data.battery_qty)).toFixed(2));calc();const found=[['Hãng pin',data.panel_brand],['Công suất tấm',data.panel_wp],['Số tấm',data.panel_qty],['Model inverter',data.inverter_model],['Công suất inverter',data.inverter_kw],['Số pha',data.phase],['Model pin lưu trữ',data.battery_model],['Dung lượng mỗi bộ',data.battery_kwh],['Số bộ pin',data.battery_qty]].filter(x=>x[1]!==null&&x[1]!==undefined&&x[1]!=='').map(x=>x[0]).join(', ');const missing=[['Hãng pin',data.panel_brand],['Công suất tấm',data.panel_wp],['Số tấm',data.panel_qty],['Model inverter',data.inverter_model],['Công suất inverter',data.inverter_kw],['Số pha',data.phase],['Model pin lưu trữ',data.battery_model],['Dung lượng mỗi bộ',data.battery_kwh],['Số bộ pin',data.battery_qty]].filter(x=>x[1]===null||x[1]===undefined||x[1]==='').map(x=>x[0]).join(', ');$('quotePdfStatus').textContent='Đã đọc '+esc(f.name)+': Tổng đầu tư gồm VAT '+Number(data.total_including_vat||0).toLocaleString('vi-VN')+' đ. Đã tự điền: '+(found||'chưa nhận diện được thông số hệ thống')+'. '+(missing?'Chưa nhận diện được: '+missing+'. Vui lòng kiểm tra và nhập bổ sung.':'Đã nhận diện đủ thông số hệ thống.')+' '+(data.method==='text'?'Đọc văn bản PDF':'Đọc OCR')+'.';}catch(e){$('quotePdfStatus').textContent='Không đọc được báo giá: '+e.message}}
 
 
 async function generatePresentationReport(){if(!pid){$('presentationStatus').textContent='Hãy lưu dự án trước khi xuất PowerPoint.';return}try{$('presentationStatus').textContent='Đang tạo PowerPoint theo form gốc...';let r=await api('/api/projects/'+pid+'/presentation-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:payload()})});$('presentationStatus').innerHTML='Đã xuất báo giá: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('presentationStatus').textContent='Không xuất được PowerPoint: '+e.message}}
@@ -1256,7 +1256,41 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     if subtotal is not None and vat is not None and abs((subtotal+vat)-total)>max(2,total*0.002):
         # Keep the final total as the authoritative investment amount; don't invent a reconciled value.
         pass
-    return {"filename":name,"subtotal":subtotal,"vat":vat,"total_including_vat":total,"method":method,"page_count":len(reader.pages)}
+    # Extract equipment specifications from quotation text. Only return fields supported by explicit text.
+    lines=[re.sub(r"\\s+"," ",line).strip() for line in normalized.splitlines() if line.strip()]
+    joined="\\n".join(lines)
+    def capture(pattern,flags=re.I):
+        m=re.search(pattern,joined,flags)
+        return m.group(1).strip(" :;,-") if m else None
+    def number_value(raw):
+        if not raw:return None
+        m=re.search(r"\\d+(?:[.,]\\d+)?",raw.replace(" ",""))
+        if not m:return None
+        try:return float(m.group(0).replace(",","."))
+        except ValueError:return None
+    panel_wp_raw=capture(r"(?:công suất(?: danh định)?(?: tấm pin| module)?|module power|rated power)[^\\n]{0,80}?(\\d{3,4})\\s*wp")
+    if not panel_wp_raw: panel_wp_raw=capture(r"(\\d{3,4})\\s*wp")
+    panel_wp=number_value(panel_wp_raw)
+    panel_qty_raw=capture(r"(?:số lượng|quantity|qty)[^\\n]{0,70}?(\\d{1,4})\\s*(?:tấm|pcs|modules?)")
+    if not panel_qty_raw: panel_qty_raw=capture(r"(\\d{1,4})\\s*(?:tấm pin|solar modules?|pv modules?)")
+    panel_qty=number_value(panel_qty_raw)
+    panel_brand=capture(r"(?:hãng|thương hiệu|brand|manufacturer)\\s*(?:tấm pin|module|pin)?\\s*[:：-]\\s*([^\\n]{2,70})")
+    if not panel_brand: panel_brand=capture(r"\\b(Jinko(?:solar)?|LONGi|JA Solar|Canadian Solar|Trina Solar|Astronergy|Risen|AIKO|Tongwei|Hanwha Q\\.? CELLS)\\b")
+    inverter_model=capture(r"(?:inverter|inverter model|biến tần)(?:\\s*/\\s*model)?\\s*[:：-]\\s*([^\\n]{2,90})")
+    if inverter_model: inverter_model=re.sub(r"\\s*(?:x\\s*\\d+|số lượng.*)$","",inverter_model,flags=re.I).strip()
+    inverter_kw_raw=capture(r"(?:công suất inverter|công suất biến tần|inverter capacity|rated power)[^\\n]{0,60}?(\\d+(?:[.,]\\d+)?)\\s*kw")
+    if not inverter_kw_raw: inverter_kw_raw=capture(r"(\\d+(?:[.,]\\d+)?)\\s*kw\\s*(?:3 pha|1 pha|three.phase|single.phase)")
+    inverter_kw=number_value(inverter_kw_raw)
+    phase_raw=capture(r"(1\\s*pha|3\\s*pha|một pha|ba pha)")
+    phase=("1 pha" if phase_raw and ("1" in phase_raw or "một" in phase_raw.lower()) else "3 pha" if phase_raw else None)
+    battery_model=capture(r"(?:pin lưu trữ|battery|battery model|model pin)\\s*[:：-]\\s*([^\\n]{2,90})")
+    battery_kwh_raw=capture(r"(?:dung lượng(?: mỗi bộ| bộ pin)?|capacity|energy)[^\\n]{0,60}?(\\d+(?:[.,]\\d+)?)\\s*kwh")
+    if not battery_kwh_raw: battery_kwh_raw=capture(r"(\\d+(?:[.,]\\d+)?)\\s*kwh\\s*(?:/\\s*(?:bộ|unit|battery)|mỗi bộ)")
+    battery_kwh=number_value(battery_kwh_raw)
+    battery_qty_raw=capture(r"(?:số lượng|quantity|qty)[^\\n]{0,70}?(\\d{1,3})\\s*(?:bộ pin|bộ battery|battery units?|sets?)")
+    if not battery_qty_raw: battery_qty_raw=capture(r"(\\d{1,3})\\s*(?:bộ pin lưu trữ|bộ pin|battery units?)")
+    battery_qty=number_value(battery_qty_raw)
+    return {"filename":name,"subtotal":subtotal,"vat":vat,"total_including_vat":total,"panel_brand":panel_brand,"panel_wp":panel_wp,"panel_qty":panel_qty,"inverter_model":inverter_model,"inverter_kw":inverter_kw,"phase":phase,"battery_model":battery_model,"battery_kwh":battery_kwh,"battery_qty":battery_qty,"method":method,"page_count":len(reader.pages)}
 
 
 @app.post("/api/pvwatts")
