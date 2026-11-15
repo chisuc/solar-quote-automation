@@ -109,8 +109,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Tỷ lệ pin đáp ứng điện ban đêm (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='100'><small class='muted'>Mặc định 100%; có thể giảm xuống 70–90% tùy mục tiêu đầu tư.</small></div>
 <div class='field'><label>Số giờ nắng đỉnh PSH (h/ngày)</label><input id='billPsh' type='number' min='.5' max='8' step='.1' value='4'></div>
 <div class='field'><label>Độ sâu xả pin DoD (%)</label><input id='billDod' type='number' min='50' max='100' step='1' value='90'></div>
-<div class='field'><label>Hiệu suất sạc pin (%)</label><input id='billChargeEff' type='number' min='50' max='100' step='1' value='95'></div>
-<div class='field'><label>Hiệu suất xả pin (%)</label><input id='billDischargeEff' type='number' min='50' max='100' step='1' value='95'></div>
+<div class='field'><label>Hiệu suất sạc pin (%)</label><input id='billChargeEff' type='number' min='50' max='100' step='1' value='100'></div>
+<div class='field'><label>Hiệu suất xả pin (%)</label><input id='billDischargeEff' type='number' min='50' max='100' step='1' value='100'></div>
 </div>
 <div class='row'><button class='btn' type='button' onclick='calculateLoadSizing()'>Tính điện năng & đề xuất</button><button class='btn alt' type='button' onclick='applyLoadSizing()'>Áp dụng vào cấu hình dự án</button></div>
 <div id='loadSizingStatus' class='muted'>Chưa tính toán.</div>
@@ -288,7 +288,7 @@ function calculateResidentialBill(){
    kwh+=units;remaining-=spend;
   });
   const vat=beforeVat*.08,total=beforeVat+vat,daily=Number($('billDays').value)>0?kwh/Number($('billDays').value):0;
-  html+='</tbody></table></div><div class="grid" style="margin-top:10px"><div class="gsa-card"><div class="muted">Tổng sản lượng ước tính</div><h2>'+kwh.toFixed(2)+'</h2><div class="muted">kWh</div></div><div class="gsa-card"><div class="muted">Tiền trước VAT</div><h2>'+beforeVat.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</h2><div class="muted">đồng</div></div><div class="gsa-card"><div class="muted">VAT 8%</div><h2>'+vat.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</h2><div class="muted">đồng</div></div></div>';
+  html+='</tbody></table></div><div class="grid" style="margin-top:10px"><div class="gsa-card"><div class="muted">Tổng sản lượng ước tính</div><h2>'+kwh.toFixed(2)+'</h2><div class="muted">kWh</div></div><div class="gsa-card"><div class="muted">Tiền trước VAT</div><h2>'+beforeVat.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</h2><div class="muted">đồng</div></div><div class="gsa-card"><div class="muted">VAT 8%</div><h2>'+vat.toLocaleString('vi-VN',{maximumFractionDigits:0})+'</h2><div class="muted">đồng</div></div><div class="gsa-card"><div class="muted">Tổng tiền thanh toán</div><h2 style="color:#16845b">'+Math.round(total).toLocaleString('vi-VN')+'</h2><div class="muted">đồng · đã gồm VAT</div></div></div>';
   $('residentialBillResult').innerHTML=html+'<p class="muted">Kết quả là ước tính theo biểu giá 5 bậc áp dụng từ 01/11/2026; giả định toàn bộ số tiền chỉ gồm tiền điện bậc thang và VAT 8%, chưa tính các khoản điều chỉnh khác nếu có.</p>';
   $('billMonthKwh').value=kwh.toFixed(2);
   $('billDailyAverage').value=Number($('billDays').value)>0?daily.toFixed(2):'';
