@@ -1256,40 +1256,40 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     if subtotal is not None and vat is not None and abs((subtotal+vat)-total)>max(2,total*0.002):
         # Keep the final total as the authoritative investment amount; don't invent a reconciled value.
         pass
-    # Extract equipment specifications from quotation text. Only return fields supported by explicit text.
-    lines=[re.sub(r"\s+"," ",line).strip() for line in normalized.splitlines() if line.strip()]
-    joined="\n".join(lines)
-    def capture(pattern,flags=re.I):
-        m=re.search(pattern,joined,flags)
+    # Read equipment values from their own quotation sections to avoid picking up unrelated numbers.
+    def section(start_pattern,end_pattern=None):
+        m=re.search(start_pattern,normalized,re.I)
+        if not m:return ""
+        tail=normalized[m.end():]
+        if end_pattern:
+            e=re.search(end_pattern,tail,re.I)
+            if e:tail=tail[:e.start()]
+        return tail
+    panel_section=section(r"1\\s*TẤM PIN NLMT",r"2\\s*INVERTER")
+    inverter_section=section(r"2\\s*INVERTER",r"3\\s*PIN LƯU TRỮ")
+    battery_section=section(r"3\\s*PIN LƯU TRỮ",r"4\\s*HỆ THỐNG")
+    def first(pattern,source,flags=re.I):
+        m=re.search(pattern,source,flags)
         return m.group(1).strip(" :;,-") if m else None
-    def number_value(raw):
-        if not raw:return None
-        m=re.search(r"\d+(?:[.,]\d+)?",raw.replace(" ",""))
-        if not m:return None
-        try:return float(m.group(0).replace(",","."))
-        except ValueError:return None
-    panel_wp_raw=capture(r"(?:công suất(?: danh định)?(?: tấm pin| module)?|module power|rated power)[^\n]{0,80}?(\d{3,4})\s*wp")
-    if not panel_wp_raw: panel_wp_raw=capture(r"(\d{3,4})\s*wp")
-    panel_wp=number_value(panel_wp_raw)
-    panel_qty_raw=capture(r"(?:số lượng|quantity|qty)[^\n]{0,70}?(\d{1,4})\s*(?:tấm|pcs|modules?)")
-    if not panel_qty_raw: panel_qty_raw=capture(r"(\d{1,4})\s*(?:tấm pin|solar modules?|pv modules?)")
-    panel_qty=number_value(panel_qty_raw)
-    panel_brand=capture(r"(?:hãng|thương hiệu|brand|manufacturer)\s*(?:tấm pin|module|pin)?\s*[:：-]\s*([^\n]{2,70})")
-    if not panel_brand: panel_brand=capture(r"\b(Jinko(?:solar)?|LONGi|JA Solar|Canadian Solar|Trina Solar|Astronergy|Risen|AIKO|Tongwei|Hanwha Q\.? CELLS)\b")
-    inverter_model=capture(r"(?:inverter|inverter model|biến tần)(?:\s*/\s*model)?\s*[:：-]\s*([^\n]{2,90})")
-    if inverter_model: inverter_model=re.sub(r"\s*(?:x\s*\d+|số lượng.*)$","",inverter_model,flags=re.I).strip()
-    inverter_kw_raw=capture(r"(?:công suất inverter|công suất biến tần|inverter capacity|rated power)[^\n]{0,60}?(\d+(?:[.,]\d+)?)\s*kw")
-    if not inverter_kw_raw: inverter_kw_raw=capture(r"(\d+(?:[.,]\d+)?)\s*kw\s*(?:3 pha|1 pha|three.phase|single.phase)")
-    inverter_kw=number_value(inverter_kw_raw)
-    phase_raw=capture(r"(1\s*pha|3\s*pha|một pha|ba pha)")
-    phase=("1 pha" if phase_raw and ("1" in phase_raw or "một" in phase_raw.lower()) else "3 pha" if phase_raw else None)
-    battery_model=capture(r"(?:pin lưu trữ|battery|battery model|model pin)\s*[:：-]\s*([^\n]{2,90})")
-    battery_kwh_raw=capture(r"(?:dung lượng(?: mỗi bộ| bộ pin)?|capacity|energy)[^\n]{0,60}?(\d+(?:[.,]\d+)?)\s*kwh")
-    if not battery_kwh_raw: battery_kwh_raw=capture(r"(\d+(?:[.,]\d+)?)\s*kwh\s*(?:/\s*(?:bộ|unit|battery)|mỗi bộ)")
-    battery_kwh=number_value(battery_kwh_raw)
-    battery_qty_raw=capture(r"(?:số lượng|quantity|qty)[^\n]{0,70}?(\d{1,3})\s*(?:bộ pin|bộ battery|battery units?|sets?)")
-    if not battery_qty_raw: battery_qty_raw=capture(r"(\d{1,3})\s*(?:bộ pin lưu trữ|bộ pin|battery units?)")
-    battery_qty=number_value(battery_qty_raw)
+    panel_brand=first(r"Thương hiệu\\s*([^\\n]+)",panel_section)
+    panel_qty_raw=first(r"\\bTấm\\s+(\\d{1,4})\\b",panel_section)
+    panel_qty=int(panel_qty_raw) if panel_qty_raw else None
+    panel_wp_raw=first(r"(?:≥|>=)\\s*(\\d{3,4})",panel_section)
+    if not panel_wp_raw:
+        # The cover states total DC capacity; derive module rating only when panel count is explicit.
+        headline=first(r"Công suất\\s*(\\d+(?:[.,]\\d+)?)\\s*kWp",normalized)
+        panel_wp_raw=str(round(float(headline.replace(",","."))*1000/panel_qty)) if headline and panel_qty else None
+    panel_wp=int(float(panel_wp_raw)) if panel_wp_raw else None
+    inverter_model=first(r"(SOLIS[^\\n]{0,100})",inverter_section)
+    inverter_kw_raw=first(r"(?:HYBRID[^\\n]{0,40}?|)(\\d+(?:[.,]\\d+)?)\\s*KW",inverter_section)
+    inverter_kw=float(inverter_kw_raw.replace(",",".")) if inverter_kw_raw else None
+    phase_raw=first(r"(1\\s*PHA|3\\s*PHA|MỘT PHA|BA PHA)",inverter_section)
+    phase=("1 pha" if phase_raw and ("1" in phase_raw or "MỘT" in phase_raw.upper()) else "3 pha" if phase_raw else None)
+    battery_model=first(r"(Pylontech[^\\n]*)",battery_section)
+    battery_kwh_raw=first(r"(\\d+(?:[.,]\\d+)?)\\s*kwh",battery_section)
+    battery_kwh=float(battery_kwh_raw.replace(",",".")) if battery_kwh_raw else None
+    battery_qty_raw=first(r"\\bBộ\\s+(\\d{1,3})\\b",battery_section)
+    battery_qty=int(battery_qty_raw) if battery_qty_raw else None
     return {"filename":name,"subtotal":subtotal,"vat":vat,"total_including_vat":total,"panel_brand":panel_brand,"panel_wp":panel_wp,"panel_qty":panel_qty,"inverter_model":inverter_model,"inverter_kw":inverter_kw,"phase":phase,"battery_model":battery_model,"battery_kwh":battery_kwh,"battery_qty":battery_qty,"method":method,"page_count":len(reader.pages)}
 
 
