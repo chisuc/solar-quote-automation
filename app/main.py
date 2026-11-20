@@ -219,7 +219,7 @@ function syncQuoteAuto(){
  setQuoteAuto('price',n('billAveragePrice')||null);
  const kwh=n('billMonthKwh'),avg=n('billAveragePrice');
  setQuoteAuto('pre',kwh>0&&avg>0? kwh*avg/(1+n('vat')/100):null);
- ['self','vat'].forEach(id=>{const cb=$('auto_'+id);if(cb&&cb.checked){const def=id==='self'?80:8;$(id).value=def}});
+ ['self','vat'].forEach(id=>{const cb=$('auto_'+id);if(cb&&cb.checked){const def=id==='self'?100:8;$(id).value=def}});
  calc();
 }
 function calc(){let kw=n('panelW')*n('panelQty')/1000,v=n('pre')*n('vat')/100;$('pv').value=kw.toFixed(3);if(loadSizingResult&&$('resPvModules'))updatePvModuleRecommendation(loadSizingResult.pvKwp);$('batTotal').value=(n('batKwh')*n('batQty')).toFixed(2);if($('auto_vatMoney').checked)$('vatMoney').value=v.toFixed(0);if($('auto_grand').checked)$('grand').value=(n('pre')+v).toFixed(0)}
