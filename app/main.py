@@ -1274,6 +1274,7 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
         # Keep PDF text extraction as primary; OCR only when text is absent or totals are incomplete.
         def clean_label(s):
             import unicodedata
+            s=s.replace("đ","d").replace("Đ","D")
             s=unicodedata.normalize("NFD",s)
             s="".join(ch for ch in s if unicodedata.category(ch)!="Mn")
             return re.sub(r"[^a-z0-9]+"," ",s.lower()).strip()
