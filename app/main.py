@@ -1265,30 +1265,30 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
             e=re.search(end_pattern,tail,re.I)
             if e:tail=tail[:e.start()]
         return tail
-    panel_section=section(r"1\\s*TẤM PIN NLMT",r"2\\s*INVERTER")
-    inverter_section=section(r"2\\s*INVERTER",r"3\\s*PIN LƯU TRỮ")
-    battery_section=section(r"3\\s*PIN LƯU TRỮ",r"4\\s*HỆ THỐNG")
+    panel_section=section(r"1\s*TẤM PIN NLMT",r"2\s*INVERTER")
+    inverter_section=section(r"2\s*INVERTER",r"3\s*PIN LƯU TRỮ")
+    battery_section=section(r"3\s*PIN LƯU TRỮ",r"4\s*HỆ THỐNG")
     def first(pattern,source,flags=re.I):
         m=re.search(pattern,source,flags)
         return m.group(1).strip(" :;,-") if m else None
-    panel_brand=first(r"Thương hiệu\\s*([^\\n]+)",panel_section)
-    panel_qty_raw=first(r"\\bTấm\\s+(\\d{1,4})\\b",panel_section)
+    panel_brand=first(r"Thương hiệu\s*([^\n]+)",panel_section)
+    panel_qty_raw=first(r"\bTấm\s+(\d{1,4})\b",panel_section)
     panel_qty=int(panel_qty_raw) if panel_qty_raw else None
-    panel_wp_raw=first(r"(?:≥|>=)\\s*(\\d{3,4})",panel_section)
+    panel_wp_raw=first(r"(?:≥|>=)\s*(\d{3,4})",panel_section)
     if not panel_wp_raw:
         # The cover states total DC capacity; derive module rating only when panel count is explicit.
-        headline=first(r"Công suất\\s*(\\d+(?:[.,]\\d+)?)\\s*kWp",normalized)
+        headline=first(r"Công suất\s*(\d+(?:[.,]\d+)?)\s*kWp",normalized)
         panel_wp_raw=str(round(float(headline.replace(",","."))*1000/panel_qty)) if headline and panel_qty else None
     panel_wp=int(float(panel_wp_raw)) if panel_wp_raw else None
-    inverter_model=first(r"(SOLIS[^\\n]{0,100})",inverter_section)
-    inverter_kw_raw=first(r"(?:HYBRID[^\\n]{0,40}?|)(\\d+(?:[.,]\\d+)?)\\s*KW",inverter_section)
+    inverter_model=first(r"(SOLIS[^\n]{0,100})",inverter_section)
+    inverter_kw_raw=first(r"(?:HYBRID[^\n]{0,40}?|)(\d+(?:[.,]\d+)?)\s*KW",inverter_section)
     inverter_kw=float(inverter_kw_raw.replace(",",".")) if inverter_kw_raw else None
-    phase_raw=first(r"(1\\s*PHA|3\\s*PHA|MỘT PHA|BA PHA)",inverter_section)
+    phase_raw=first(r"(1\s*PHA|3\s*PHA|MỘT PHA|BA PHA)",inverter_section)
     phase=("1 pha" if phase_raw and ("1" in phase_raw or "MỘT" in phase_raw.upper()) else "3 pha" if phase_raw else None)
-    battery_model=first(r"(Pylontech[^\\n]*)",battery_section)
-    battery_kwh_raw=first(r"(\\d+(?:[.,]\\d+)?)\\s*kwh",battery_section)
+    battery_model=first(r"(Pylontech[^\n]*)",battery_section)
+    battery_kwh_raw=first(r"(\d+(?:[.,]\d+)?)\s*kwh",battery_section)
     battery_kwh=float(battery_kwh_raw.replace(",",".")) if battery_kwh_raw else None
-    battery_qty_raw=first(r"\\bBộ\\s+(\\d{1,3})\\b",battery_section)
+    battery_qty_raw=first(r"\bBộ\s+(\d{1,3})\b",battery_section)
     battery_qty=int(battery_qty_raw) if battery_qty_raw else None
     return {"filename":name,"subtotal":subtotal,"vat":vat,"total_including_vat":total,"panel_brand":panel_brand,"panel_wp":panel_wp,"panel_qty":panel_qty,"inverter_model":inverter_model,"inverter_kw":inverter_kw,"phase":phase,"battery_model":battery_model,"battery_kwh":battery_kwh,"battery_qty":battery_qty,"method":method,"page_count":len(reader.pages)}
 
