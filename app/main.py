@@ -681,15 +681,12 @@ async function billFileToCanvas(file){
   canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas;
  }finally{URL.revokeObjectURL(url)}
 }
-async function ocrBillInBrowser(file){
- const worker=await getBillOcrWorker(),canvas=await billFileToCanvas(file),w=canvas.width,h=canvas.height;
- const outputs=[];
- // Always OCR the complete invoice: the old crop-only path could miss the
- // payment total or a TOU row when the supplier changed the bill layout.
+async function ocrBillCanvas(canvas,worker){
+ const w=canvas.width,h=canvas.height,outputs=[];
+ // Read the full invoice first, then focused regions to preserve small figures.
  await worker.setParameters({tessedit_pageseg_mode:'11',preserve_interword_spaces:'1'});
  const full=await worker.recognize(canvas);
  outputs.push('=== OCR TOÀN TRANG ===\\n'+(full.data.text||''));
- // Then OCR the likely table/header regions at their native resolution.
  await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
  const boxes=[[.02,.02,.98,.48],[.02,.28,.98,.78],[.02,.58,.98,.99]];
  for(let i=0;i<boxes.length;i++){
@@ -700,6 +697,54 @@ async function ocrBillInBrowser(file){
   outputs.push('=== VÙNG '+(i+1)+' ===\\n'+(result.data.text||''));
  }
  return outputs.join('\\n');
+}
+async function ocrBillInBrowser(file){
+ const worker=await getBillOcrWorker(),canvas=await billFileToCanvas(file);
+ return ocrBillCanvas(canvas,worker);
+}
+async function readBillPdfInBrowser(file){
+ await loadBillScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+ if(!window.pdfjsLib)throw Error('Không tải được bộ đọc PDF trên trình duyệt.');
+ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+ const nativePages=[];
+ for(let n=1;n<=Math.min(pdf.numPages,8);n++){
+  const page=await pdf.getPage(n),tc=await page.getTextContent(),rows=[];
+  for(const item of tc.items||[]){
+   const value=String(item.str||'').trim();if(!value)continue;
+   const y=Number(item.transform?.[5]||0),x=Number(item.transform?.[4]||0);
+   let row=rows.find(r=>Math.abs(r.y-y)<2.5);
+   if(!row){row={y,items:[]};rows.push(row)}
+   row.items.push({x,value});
+  }
+  const pageText=rows.sort((a,b)=>b.y-a.y).map(r=>r.items.sort((a,b)=>a.x-b.x).map(v=>v.value).join(' ')).join('\\n');
+  nativePages.push('=== TRANG PDF '+n+' ===\\n'+pageText);
+ }
+ const nativeText=nativePages.join('\\n');
+ if(!nativeText.trim())throw Error('PDF không có lớp chữ; đang chuyển sang OCR.');
+ let response=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text:nativeText})});
+ let parsed={};try{parsed=await response.json()}catch(_){}
+ if(!response.ok)throw Error(parsed.detail||'Không phân tích được nội dung PDF.');
+ // A PDF can contain selectable text but still omit figures in embedded image blocks.
+ if(parsed.monthly_kwh&&parsed.amount_vnd){parsed.ocr_used=false;parsed.ocr_engine='pdfjs-text';return parsed}
+ const worker=await getBillOcrWorker(),ocrPages=[];
+ for(let n=1;n<=Math.min(pdf.numPages,3);n++){
+  $('billReadStatus').textContent='PDF có lớp chữ chưa đủ dữ liệu; đang OCR trang '+n+'/'+Math.min(pdf.numPages,3)+' trên trình duyệt...';
+  const page=await pdf.getPage(n),viewport=page.getViewport({scale:2.0});
+  const canvas=document.createElement('canvas');canvas.width=Math.round(viewport.width);canvas.height=Math.round(viewport.height);
+  await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport}).promise;
+  ocrPages.push('=== OCR PDF TRANG '+n+' ===\\n'+await ocrBillCanvas(canvas,worker));
+  const combined=nativeText+'\\n'+ocrPages.join('\\n');
+  const check=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text:combined})});
+  try{parsed=await check.json()}catch(_){}
+  if(check.ok&&parsed.monthly_kwh&&parsed.amount_vnd)break;
+ }
+ const finalText=nativeText+'\\n'+ocrPages.join('\\n');
+ response=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text:finalText})});
+ try{parsed=await response.json()}catch(_){}
+ if(!response.ok)throw Error(parsed.detail||'Không phân tích được PDF sau OCR.');
+ parsed.ocr_used=ocrPages.length>0;parsed.ocr_engine=ocrPages.length?'pdfjs+tesseract-browser':'pdfjs-text';
+ return parsed;
 }
 async function readBills(){
  const files=[...$('billFiles').files];
@@ -721,12 +766,8 @@ async function readBills(){
     if(file.size>20*1024*1024)throw Error('File vượt quá 20 MB');
     let data={};
     if(file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf')){
-     // PDFs should use native text extraction first on the server (PdfReader).
-     // The server only falls back to OCR for scanned/image-only PDFs.
-     const form=new FormData();form.append('file',file,file.name);
-     const res=await fetch('/api/bill/read',{method:'POST',body:form});
-     try{data=await res.json()}catch(_){}
-     if(!res.ok)throw Error(data.detail||'Không trích xuất được nội dung PDF');
+     // Read the PDF text layer in the browser; scanned/mixed PDFs fall back to browser OCR.
+     data=await readBillPdfInBrowser(file);
     }else{
      // Raster images continue to use browser OCR.
      const text=await ocrBillInBrowser(file);
