@@ -756,7 +756,7 @@ async function readBills(){
  const escHtml=s=>String(s||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
  const renderProgress=(done,current,status)=>{
   const ok=billBatchResults.filter(x=>x.monthly_kwh&&!x.error).length,failed=billBatchResults.filter(x=>x.error).length;
-  $('billReadStatus').textContent='OCR trên máy tính '+done+'/'+files.length+' file · nhận diện được '+ok+'/'+done+' · lỗi '+failed;
+  $('billReadStatus').textContent='Đọc hóa đơn '+done+'/'+files.length+' file · nhận diện được '+ok+'/'+done+' · lỗi '+failed;
   progress.innerHTML='<div style="height:8px;background:#e7efeb;border-radius:8px;overflow:hidden;margin:8px 0"><div style="height:100%;width:'+(done/files.length*100)+'%;background:#16845b\"></div></div><div style="font-size:13px;font-weight:600;margin-bottom:6px">'+escHtml(status||current)+'</div><div style="display:grid;gap:5px">'+files.map((file,i)=>{const item=billBatchResults[i];let label=item?(item.error?'Không đọc được: '+item.error:(item.monthly_kwh?'Đọc thành công · '+Number(item.monthly_kwh).toLocaleString('vi-VN')+' kWh':'Thiếu tổng kWh')):(i===done?'Đang OCR trên máy tính...':'Đang chờ');return '<div style="display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #edf1ef;padding:5px 0;font-size:12px"><span>'+ (i+1)+'. '+escHtml(file.name)+'</span><span>'+escHtml(label)+'</span></div>'}).join('')+'</div>';
  };
  renderProgress(0,files[0]?.name,'Chuẩn bị đọc PDF bằng trích xuất văn bản; ảnh sẽ dùng OCR trên Chrome.');
@@ -788,7 +788,7 @@ async function readBills(){
  }
  const ok=billBatchResults.filter(x=>x.monthly_kwh&&!x.error).length,fail=billBatchResults.length-ok;
  $('billReadStatus').textContent='Hoàn tất: đọc được '+ok+'/'+files.length+' file; '+fail+' file lỗi hoặc chưa nhận diện đủ tổng kWh.';
- $('loadSizingStatus').textContent='PDF được trích xuất văn bản gốc; ảnh được OCR trên trình duyệt. Kiểm tra số liệu từng hóa đơn trước khi tính công suất.';
+ $('loadSizingStatus').textContent='PDF ưu tiên đọc lớp chữ, tự OCR trên trình duyệt nếu thiếu dữ liệu; ảnh được OCR trên trình duyệt. Kiểm tra số liệu từng hóa đơn trước khi tính công suất.';
 }
 $('billDayShare').addEventListener('input',()=>{calcBillNightShare();loadSizingResult=null});
 for(const id of ['billMonthKwh','billDays','billMonthlyAverageKwh','billMonthlyAverageMoney','billPsh','billDod'])$(id).addEventListener('input',()=>{loadSizingResult=null});
