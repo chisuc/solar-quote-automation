@@ -1269,40 +1269,92 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     except Exception as exc:
         raise HTTPException(422,"Không thể đọc cấu trúc PDF: "+str(exc)[:200])
     method="text"
-    if len(re.sub(r"\s+","",text_content))<30:
-        raise HTTPException(422,"PDF hiện chưa có lớp văn bản để đọc tự động. Vui lòng dùng PDF có thể chọn/copy chữ hoặc tải bản PDF rõ nét có OCR.")
-    normalized=text_content.replace("\u00a0"," ")
-    def amount_near(pattern):
-        match=re.search(pattern,normalized,re.I|re.M)
-        if not match:return None
-        raw=match.group(1).strip()
-        digits=re.sub(r"[^0-9]","",raw)
-        return int(digits) if digits else None
-    total=amount_near(r"(?:Tổng\s*tiền\s*\(\s*bao\s*gồm\s*VAT\s*\)|Tổng\s*tiền\s*đã\s*bao\s*gồm\s*VAT|Tổng\s*cộng\s*(?:đã\s*)?bao\s*gồm\s*VAT)[^0-9]{0,80}([0-9][0-9.,\s]{3,})")
-    subtotal=amount_near(r"(?:Tổng\s*tiền\s*\(\s*Chưa\s*bao\s*gồm\s*VAT\s*\)|Tổng\s*tiền\s*trước\s*VAT|Cộng\s*tiền\s*hàng)[^0-9]{0,80}([0-9][0-9.,\s]{3,})")
-    vat=amount_near(r"(?:VAT\s*(?:8|10)?\s*%?|Thuế\s*GTGT)[^0-9]{0,80}([0-9][0-9.,\s]{3,})")
+    normalized=text_content.replace("\\u00a0"," ")
+    def parse_amount_block(text):
+        # Keep PDF text extraction as primary; OCR only when text is absent or totals are incomplete.
+        def clean_label(s):
+            import unicodedata
+            s=unicodedata.normalize("NFD",s)
+            s="".join(ch for ch in s if unicodedata.category(ch)!="Mn")
+            return re.sub(r"[^a-z0-9]+"," ",s.lower()).strip()
+        def nums(s):
+            found=[]
+            for raw in re.findall(r"(?<!\\d)(?:\\d{1,3}(?:[., ]\\d{3})+|\\d{6,})(?!\\d)",s):
+                digits=re.sub(r"\\D","",raw)
+                if digits:
+                    value=int(digits)
+                    if value>=1000 and value not in found: found.append(value)
+            return found
+        lines=[re.sub(r"[ \\t]+"," ",x).strip() for x in text.splitlines() if x.strip()]
+        norm=[clean_label(x) for x in lines]
+        def near(labels, reject=()):
+            for i,line in enumerate(norm):
+                if any(label in line for label in labels) and not any(x in line for x in reject):
+                    # PDF extractors may place the amount before, after, or on the next line.
+                    block=" ".join(lines[max(0,i-1):min(len(lines),i+3)])
+                    candidates=nums(block)
+                    if candidates:
+                        # Prefer values in the label's own line; otherwise nearest following line.
+                        own=nums(lines[i])
+                        if own:return own[-1]
+                        for j in range(i+1,min(len(lines),i+3)):
+                            nxt=nums(lines[j])
+                            if nxt:return nxt[-1]
+                        return candidates[-1]
+            return None
+        total=near([
+            "tong tien da bao gom vat","tong tien bao gom vat","tong cong bao gom vat",
+            "tong thanh toan","tong cong thanh toan","tong tien thanh toan",
+            "tong gia tri sau thue","tong sau vat","so tien phai thanh toan"
+        ])
+        subtotal=near([
+            "tong tien chua bao gom vat","tong tien truoc vat","tong truoc vat",
+            "gia tri truoc thue","cong tien hang","tong cong truoc thue"
+        ])
+        vat=near(["tien thue gtgt","thue gtgt","tien vat","thue vat","vat"])
+        # Some quotations print only three consecutive totals in a summary block.
+        if total is None or subtotal is None:
+            for i,line in enumerate(norm):
+                if ("chua bao gom vat" in line or "truoc vat" in line) and i>=1:
+                    window=" ".join(lines[max(0,i-4):min(len(lines),i+4)])
+                    candidates=nums(window)
+                    for a in range(len(candidates)-2):
+                        sub,tax,grand=candidates[a:a+3]
+                        if sub>0 and grand>=sub and abs(sub+tax-grand)<=max(2,grand*0.003):
+                            subtotal,vat,total=sub,tax,grand
+        if total is not None and subtotal is not None and vat is None:
+            diff=total-subtotal
+            if diff>=0:vat=diff
+        if total is not None and vat is not None and subtotal is None:
+            diff=total-vat
+            if diff>=0:subtotal=diff
+        if total is None and subtotal is not None and vat is not None:
+            total=subtotal+vat
+        return subtotal,vat,total
+    subtotal,vat,total=parse_amount_block(normalized)
+    # Scanned and mixed PDFs: OCR the first pages only when native text cannot provide all totals.
+    if subtotal is None or vat is None or total is None:
+        try:
+            pages=convert_from_bytes(data,dpi=220,first_page=1,last_page=min(3,len(reader.pages)))
+            ocr_text="\\n".join(_bill_ocr_image(page) for page in pages)
+            if ocr_text.strip():
+                ocr_sub,ocr_vat,ocr_total=parse_amount_block(ocr_text)
+                subtotal=subtotal if subtotal is not None else ocr_sub
+                vat=vat if vat is not None else ocr_vat
+                total=total if total is not None else ocr_total
+                method="text+ocr" if normalized.strip() else "ocr"
+        except Exception as exc:
+            print(f"Quote PDF OCR fallback failed: {type(exc).__name__}: {exc}",flush=True)
+    if total is None and subtotal is not None and vat is not None:
+        total=subtotal+vat
+    if subtotal is None and total is not None and vat is not None:
+        subtotal=total-vat if total>=vat else None
+    if vat is None and total is not None and subtotal is not None:
+        vat=total-subtotal if total>=subtotal else None
     if total is None:
-        # Fallback: prefer a clearly labeled final payment amount, never a line-item amount.
-        total=amount_near(r"(?:Tổng\s*thanh\s*toán|Tổng\s*cộng|Thành\s*tiền\s*thanh\s*toán)[^0-9]{0,80}([0-9][0-9.,\s]{3,})")
-    if total is None:
-        # Right-aligned quote tables can extract the amount column before the labels.
-        # For this layout, read the final three formatted amounts immediately preceding
-        # the "subtotal / VAT / total" label block, rather than searching after each label.
-        label_match=re.search(r"Tổng\s*tiền\s*\(\s*Chưa\s*bao\s*gồm\s*VAT\s*\)",normalized,re.I)
-        if label_match:
-            before_labels=normalized[:label_match.start()]
-            amounts=re.findall(r"(?<!\d)(\d{1,3}(?:[,.]\d{3})+)(?!\d)",before_labels)
-            if len(amounts)>=3:
-                parsed=[int(re.sub(r"[^0-9]","",v)) for v in amounts[-3:]]
-                if parsed[0]>0 and parsed[1]>=0 and parsed[2]>=parsed[0] and abs(parsed[0]+parsed[1]-parsed[2])<=max(2,parsed[2]*0.002):
-                    subtotal,vat,total=parsed
-    if total is None:
-        raise HTTPException(422,"Không tìm thấy dòng tổng tiền đã gồm VAT. Hãy kiểm tra báo giá có dòng tổng cộng rõ ràng.")
-    if subtotal is None and vat is not None: subtotal=max(0,total-vat)
-    if vat is None and subtotal is not None: vat=max(0,total-subtotal)
-    if subtotal is not None and vat is not None and abs((subtotal+vat)-total)>max(2,total*0.002):
-        # Keep the final total as the authoritative investment amount; don't invent a reconciled value.
-        pass
+        raise HTTPException(422,"Chưa nhận diện được tổng tiền trên PDF. Hãy kiểm tra trang tổng hợp báo giá có rõ dòng trước VAT, VAT và sau VAT.")
+    if subtotal is not None and vat is not None and abs((subtotal+vat)-total)>max(2,total*0.003):
+        print(f"Quote totals mismatch: subtotal={subtotal}, vat={vat}, total={total}",flush=True)
     # Read equipment values from their own quotation sections to avoid picking up unrelated numbers.
     def section(start_pattern,end_pattern=None):
         m=re.search(start_pattern,normalized,re.I)
