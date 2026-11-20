@@ -720,11 +720,13 @@ async function readBillPdfInBrowser(file){
   const pageText=rows.sort((a,b)=>b.y-a.y).map(r=>r.items.sort((a,b)=>a.x-b.x).map(v=>v.value).join(' ')).join('\\n');
   nativePages.push('=== TRANG PDF '+n+' ===\\n'+pageText);
  }
- const nativeText=nativePages.join('\\n');
- if(!nativeText.trim())throw Error('PDF không có lớp chữ; đang chuyển sang OCR.');
- let response=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text:nativeText})});
- let parsed={};try{parsed=await response.json()}catch(_){}
- if(!response.ok)throw Error(parsed.detail||'Không phân tích được nội dung PDF.');
+ const nativeText=nativePages.join('\\n').slice(0,45000);
+ let response=null,parsed={};
+ if(nativeText.trim()){
+  response=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text:nativeText})});
+  try{parsed=await response.json()}catch(_){}
+  if(!response.ok)throw Error(parsed.detail||'Không phân tích được nội dung PDF.');
+ }
  // A PDF can contain selectable text but still omit figures in embedded image blocks.
  if(parsed.monthly_kwh&&parsed.amount_vnd){parsed.ocr_used=false;parsed.ocr_engine='pdfjs-text';return parsed}
  const worker=await getBillOcrWorker(),ocrPages=[];
@@ -734,12 +736,12 @@ async function readBillPdfInBrowser(file){
   const canvas=document.createElement('canvas');canvas.width=Math.round(viewport.width);canvas.height=Math.round(viewport.height);
   await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport}).promise;
   ocrPages.push('=== OCR PDF TRANG '+n+' ===\\n'+await ocrBillCanvas(canvas,worker));
-  const combined=nativeText+'\\n'+ocrPages.join('\\n');
+  const combined=(nativeText+'\\n'+ocrPages.join('\\n')).slice(0,49000);
   const check=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text:combined})});
   try{parsed=await check.json()}catch(_){}
   if(check.ok&&parsed.monthly_kwh&&parsed.amount_vnd)break;
  }
- const finalText=nativeText+'\\n'+ocrPages.join('\\n');
+ const finalText=(nativeText+'\\n'+ocrPages.join('\\n')).slice(0,49000);
  response=await fetch('/api/bills/parse-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,text:finalText})});
  try{parsed=await response.json()}catch(_){}
  if(!response.ok)throw Error(parsed.detail||'Không phân tích được PDF sau OCR.');
