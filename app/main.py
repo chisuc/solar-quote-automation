@@ -1333,17 +1333,35 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
             total=subtotal+vat
         return subtotal,vat,total
     subtotal,vat,total=parse_amount_block(normalized)
-    # Scanned and mixed PDFs: OCR the first pages only when native text cannot provide all totals.
+    # Dedicated fast quotation OCR. Never reuse the multi-crop EVN bill OCR pipeline here.
+    # Moderate rendering resolution and hard per-page Tesseract time limits keep this request bounded.
     if subtotal is None or vat is None or total is None:
         try:
-            pages=convert_from_bytes(data,dpi=220,first_page=1,last_page=min(3,len(reader.pages)))
-            ocr_text="\n".join(_bill_ocr_image(page) for page in pages)
-            if ocr_text.strip():
-                ocr_sub,ocr_vat,ocr_total=parse_amount_block(ocr_text)
+            page_count=min(3,len(reader.pages))
+            pages=convert_from_bytes(data,dpi=150,first_page=1,last_page=page_count,fmt="jpeg")
+            ocr_parts=[]
+            for page_index,page in enumerate(pages,1):
+                page=ImageOps.autocontrast(ImageOps.exif_transpose(page).convert("L"))
+                page.thumbnail((1400,1800),Image.Resampling.LANCZOS)
+                try:
+                    page_text=pytesseract.image_to_string(page,lang="vie+eng",config="--oem 1 --psm 6",timeout=12)
+                except RuntimeError as exc:
+                    if "timeout" not in str(exc).lower(): raise
+                    print(f"Quote OCR page {page_index} timed out; trying sparse layout once",flush=True)
+                    try:
+                        page_text=pytesseract.image_to_string(page,lang="vie+eng",config="--oem 1 --psm 11",timeout=8)
+                    except RuntimeError as retry_exc:
+                        if "timeout" not in str(retry_exc).lower(): raise
+                        page_text=""
+                ocr_parts.append(page_text)
+                ocr_sub,ocr_vat,ocr_total=parse_amount_block(page_text)
                 subtotal=subtotal if subtotal is not None else ocr_sub
                 vat=vat if vat is not None else ocr_vat
                 total=total if total is not None else ocr_total
-                method="text+ocr" if normalized.strip() else "ocr"
+                print(f"Quote OCR page {page_index}: chars={len(page_text.strip())}; totals={subtotal}/{vat}/{total}",flush=True)
+                if subtotal is not None and vat is not None and total is not None:
+                    break
+            method="text+ocr" if normalized.strip() else "ocr"
         except Exception as exc:
             print(f"Quote PDF OCR fallback failed: {type(exc).__name__}: {exc}",flush=True)
     if total is None and subtotal is not None and vat is not None:
