@@ -1269,7 +1269,7 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     except Exception as exc:
         raise HTTPException(422,"Không thể đọc cấu trúc PDF: "+str(exc)[:200])
     method="text"
-    normalized=text_content.replace("\\u00a0"," ")
+    normalized=text_content.replace("\u00a0"," ")
     def parse_amount_block(text):
         # Keep PDF text extraction as primary; OCR only when text is absent or totals are incomplete.
         def clean_label(s):
@@ -1279,13 +1279,13 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
             return re.sub(r"[^a-z0-9]+"," ",s.lower()).strip()
         def nums(s):
             found=[]
-            for raw in re.findall(r"(?<!\\d)(?:\\d{1,3}(?:[., ]\\d{3})+|\\d{6,})(?!\\d)",s):
-                digits=re.sub(r"\\D","",raw)
+            for raw in re.findall(r"(?<!\d)(?:\d{1,3}(?:[., ]\d{3})+|\d{6,})(?!\d)",s):
+                digits=re.sub(r"\D","",raw)
                 if digits:
                     value=int(digits)
                     if value>=1000 and value not in found: found.append(value)
             return found
-        lines=[re.sub(r"[ \\t]+"," ",x).strip() for x in text.splitlines() if x.strip()]
+        lines=[re.sub(r"[ \t]+"," ",x).strip() for x in text.splitlines() if x.strip()]
         norm=[clean_label(x) for x in lines]
         def near(labels, reject=()):
             for i,line in enumerate(norm):
@@ -1336,7 +1336,7 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     if subtotal is None or vat is None or total is None:
         try:
             pages=convert_from_bytes(data,dpi=220,first_page=1,last_page=min(3,len(reader.pages)))
-            ocr_text="\\n".join(_bill_ocr_image(page) for page in pages)
+            ocr_text="\n".join(_bill_ocr_image(page) for page in pages)
             if ocr_text.strip():
                 ocr_sub,ocr_vat,ocr_total=parse_amount_block(ocr_text)
                 subtotal=subtotal if subtotal is not None else ocr_sub
