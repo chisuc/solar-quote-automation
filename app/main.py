@@ -2515,9 +2515,13 @@ async def create_presentation_report(pid:str,request:Request):
                 fresh_table.cell(ri,0).text=label
                 fresh_table.cell(ri,1).text=value
 
-            total_title=fresh_table.cell(4,0).merge(fresh_table.cell(4,1))
+            # python-pptx TableCell.merge() mutates the table and returns None.
+            # Re-fetch the top-left anchor cell after merging before setting text/styling.
+            fresh_table.cell(4,0).merge(fresh_table.cell(4,1))
+            total_title=fresh_table.cell(4,0)
             total_title.text="Tổng tỉ lệ tiêu thụ ĐMT ước tính"
-            total_value=fresh_table.cell(5,0).merge(fresh_table.cell(5,1))
+            fresh_table.cell(5,0).merge(fresh_table.cell(5,1))
+            total_value=fresh_table.cell(5,0)
             total_value.text="100%"
 
             def style_ur_table_cell(cell,fill_rgb="FFFFFF",font_rgb="000000",font_pt=8.5,bold=False):
