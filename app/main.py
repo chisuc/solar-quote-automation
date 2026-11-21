@@ -2011,9 +2011,14 @@ def _ppt_set_shape_text(shape,text):
             para.level=source.level
             para.alignment=source.alignment
             if source.runs:
-                para.add_run()._r.get_or_add_rPr()
+                new_run=para.add_run()
                 if source.runs[0]._r.rPr is not None:
-                    para.runs[0]._r.rPr=deepcopy(source.runs[0]._r.rPr)
+                    target_rpr=new_run._r.get_or_add_rPr()
+                    source_rpr=source.runs[0]._r.rPr
+                    target_rpr.clear()
+                    target_rpr.attrib.update(source_rpr.attrib)
+                    for child in source_rpr:
+                        target_rpr.append(deepcopy(child))
         _ppt_set_paragraph_text(para,line)
 
 def _ppt_set_paragraph_label_value(paragraph,label,value,label_color="000000",value_color="C00000"):
@@ -2028,8 +2033,12 @@ def _ppt_set_paragraph_label_value(paragraph,label,value,label_color="000000",va
         label_run=runs[0]
         value_run=paragraph.add_run()
         if runs[0]._r.rPr is not None:
-            value_run._r.get_or_add_rPr()
-            value_run._r.rPr=deepcopy(runs[0]._r.rPr)
+            target_rpr=value_run._r.get_or_add_rPr()
+            source_rpr=runs[0]._r.rPr
+            target_rpr.clear()
+            target_rpr.attrib.update(source_rpr.attrib)
+            for child in source_rpr:
+                target_rpr.append(deepcopy(child))
     else:
         label_run=runs[0]
         value_run=runs[-1]
