@@ -2345,6 +2345,8 @@ async def create_presentation_report(pid:str,request:Request):
         text_shape(prs.slides[4],14,f"Số điện:\n~{fmt(monthly_load,0)} kWh/tháng")
 
         # Replace the old generic chart on slide 5 with the saved website load/PV chart.
+        from pptx.util import Inches
+        import unicodedata
         slide5=prs.slides[4]
         load_chart_bytes,load_chart_metrics=_ppt_load_profile_chart(p)
         if load_chart_bytes:
