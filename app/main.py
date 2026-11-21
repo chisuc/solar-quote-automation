@@ -1474,12 +1474,16 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
         customer_name=value_after_label("Tên")
     if not site_address:
         site_address=value_after_label("Địa chỉ")
-    for ix,line in enumerate(all_lines):
+    # Restrict phone lookup to the customer block before the supplier quote heading;
+    # never mistake the supplier's own phone number in its letterhead for the customer's.
+    quote_heading=next((ix for ix,line in enumerate(all_lines) if re.search(r"BÁO GIÁ DỰ ÁN",line,re.I)),len(all_lines))
+    customer_lines=all_lines[:quote_heading]
+    for ix,line in enumerate(customer_lines):
         m=re.match(r"^Điện thoại\b\s*[:：]?\s*(.*)$",line,re.I)
         if m:
             candidate=m.group(1).strip()
-            if not candidate and ix+1<len(all_lines):
-                candidate=all_lines[ix+1].strip()
+            if not candidate and ix+1<len(customer_lines):
+                candidate=customer_lines[ix+1].strip()
             digits=re.sub(r"\D","",candidate)
             if 9<=len(digits)<=11:
                 customer_phone=digits
