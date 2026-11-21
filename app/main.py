@@ -2471,63 +2471,103 @@ async def create_presentation_report(pid:str,request:Request):
                 _ppt_replace_picture(slide5,chart_frame,load_chart_bytes)
         else:
             load_chart_metrics={}
-        # Populate and enlarge the existing right-hand summary table beside the UR chart.
+        # Rebuild the UR-side summary table from scratch. The old table in the
+        # uploaded PPT template belongs to a previous project and must not be reused.
         from pptx.util import Inches, Pt
         from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-        slide5_table_shape=next((sh for sh in slide5.shapes if sh.has_table),None)
-        slide5_table=slide5_table_shape.table if slide5_table_shape is not None else None
-        if slide5_table is not None and len(slide5_table.rows)>1:
-            # Use the available space to the right of the chart, preserving a clear gap.
-            if picture_candidates:
-                gap=Inches(0.18)
-                right_margin=Inches(0.22)
-                table_left=chart_frame.left+chart_frame.width+gap
-                table_width=prs.slide_width-table_left-right_margin
-                if table_width>Inches(2.4):
-                    slide5_table_shape.left=table_left
-                    slide5_table.columns[0].width=int(table_width*0.75)
-                    if len(slide5_table.columns)>1:
-                        slide5_table.columns[1].width=table_width-slide5_table.columns[0].width
-                # Expand the table vertically into the open area around the chart.
-                table_height=Inches(3.45)
-                table_top=max(Inches(0.85),chart_frame.top-Inches(1.18))
-                max_bottom=prs.slide_height-Inches(0.42)
-                if table_top+table_height>max_bottom:
-                    table_height=max_bottom-table_top
-                slide5_table_shape.top=table_top
-                row_weights=[0.58,0.58,0.58,0.58,0.55,0.58]
-                if len(slide5_table.rows)==len(row_weights):
-                    for row,weight in zip(slide5_table.rows,row_weights):
-                        row.height=Inches(weight)
-                else:
-                    each=table_height/len(slide5_table.rows)
-                    for row in slide5_table.rows:
-                        row.height=each
-            # Keep the template's labels, borders and yellow total row; only fill values.
-            for rr in range(1,len(slide5_table.rows)):
-                row=slide5_table.rows[rr]
-                raw_label=row.cells[0].text.lower()
-                label=re.sub(r"[^a-z0-9]+"," ",unicodedata.normalize("NFKD",raw_label).encode("ascii","ignore").decode()).strip()
-                value=None
-                if "du an" in label: value=project
-                elif "ma so khach hang" in label: value=val("customerCode","")
-                elif "cong suat he thong" in label: value=fmt(pv,2)
-                elif "ti le tu tieu thu" in label: value=fmt(load_chart_metrics["pv_self_rate"],1)+"%" if "pv_self_rate" in load_chart_metrics else ""
-                elif "tong ti le tieu thu" in label: value="100%"
-                if value is not None: _ppt_set_cell_text(row.cells[-1],value)
-            # Increase readability while preserving the template's existing colors and borders.
-            for ri,row in enumerate(slide5_table.rows):
-                for cell in row.cells:
-                    cell.vertical_anchor=MSO_ANCHOR.MIDDLE
-                    cell.margin_left=Inches(0.045)
-                    cell.margin_right=Inches(0.045)
-                    cell.margin_top=Inches(0.035)
-                    cell.margin_bottom=Inches(0.035)
-                    cell.text_frame.word_wrap=True
-                    for para in cell.text_frame.paragraphs:
-                        para.alignment=PP_ALIGN.CENTER
-                        for run in para.runs:
-                            run.font.size=Pt(12 if ri<5 else 14)
+        from pptx.dml.color import RGBColor
+        from pptx.oxml.xmlchemy import OxmlElement
+        from pptx.oxml.ns import qn
+
+        # Remove every pre-existing table on slide 5 (including stale project data).
+        for old_shape in list(slide5.shapes):
+            if old_shape.has_table:
+                old_shape._element.getparent().remove(old_shape._element)
+
+        if picture_candidates:
+            # Match the table's location to the actual chart frame on this slide.
+            table_left=chart_frame.left+chart_frame.width+Inches(0.18)
+            table_right=prs.slide_width-Inches(0.22)
+            table_width=max(Inches(2.6),table_right-table_left)
+            row_heights=[Inches(0.20),Inches(0.20),Inches(0.20),Inches(0.20),Inches(0.22),Inches(0.40)]
+            table_height=sum(row_heights)
+            table_top=chart_frame.top+(chart_frame.height-table_height)//2
+            table_top=max(Inches(0.55),min(table_top,prs.slide_height-table_height-Inches(0.25)))
+
+            # Six rows: four key/value rows, a merged yellow title row, and a
+            # merged total-value row, matching the supplied reference image.
+            table_shape=slide5.shapes.add_table(6,2,table_left,table_top,table_width,table_height)
+            fresh_table=table_shape.table
+            fresh_table.columns[0].width=int(table_width*0.75)
+            fresh_table.columns[1].width=table_width-fresh_table.columns[0].width
+            for row,height in zip(fresh_table.rows,row_heights):
+                row.height=height
+
+            pv_self_rate=(fmt(load_chart_metrics["pv_self_rate"],1)+"%"
+                          if "pv_self_rate" in load_chart_metrics else "")
+            values=[
+                ("Dự án",str(project or "")),
+                ("Mã số khách hàng",str(val("customerCode","") or "")),
+                ("Công suất hệ thống ĐMT (kWp)",fmt(pv,2)),
+                ("Tỉ lệ tự tiêu thụ ĐMT ban ngày",pv_self_rate),
+            ]
+            for ri,(label,value) in enumerate(values):
+                fresh_table.cell(ri,0).text=label
+                fresh_table.cell(ri,1).text=value
+
+            total_title=fresh_table.cell(4,0).merge(fresh_table.cell(4,1))
+            total_title.text="Tổng tỉ lệ tiêu thụ ĐMT ước tính"
+            total_value=fresh_table.cell(5,0).merge(fresh_table.cell(5,1))
+            total_value.text="100%"
+
+            def style_ur_table_cell(cell,fill_rgb="FFFFFF",font_rgb="000000",font_pt=8.5,bold=False):
+                cell.fill.solid()
+                cell.fill.fore_color.rgb=RGBColor.from_string(fill_rgb)
+                cell.vertical_anchor=MSO_ANCHOR.MIDDLE
+                cell.margin_left=Inches(0.045)
+                cell.margin_right=Inches(0.045)
+                cell.margin_top=Inches(0.015)
+                cell.margin_bottom=Inches(0.015)
+                cell.text_frame.word_wrap=True
+                for paragraph in cell.text_frame.paragraphs:
+                    paragraph.alignment=PP_ALIGN.CENTER
+                    paragraph.space_before=Pt(0)
+                    paragraph.space_after=Pt(0)
+                    for run in paragraph.runs:
+                        run.font.name="Arial"
+                        run.font.size=Pt(font_pt)
+                        run.font.bold=bold
+                        run.font.color.rgb=RGBColor.from_string(font_rgb)
+                # Draw a thin black border on all four sides.
+                tcPr=cell._tc.get_or_add_tcPr()
+                for edge in ("lnL","lnR","lnT","lnB"):
+                    tag=qn("a:"+edge)
+                    line=tcPr.find(tag)
+                    if line is None:
+                        line=OxmlElement("a:"+edge)
+                        tcPr.append(line)
+                    line.set("w","9525")
+                    solid=line.find(qn("a:solidFill"))
+                    if solid is None:
+                        solid=OxmlElement("a:solidFill")
+                        line.append(solid)
+                    color=solid.find(qn("a:srgbClr"))
+                    if color is None:
+                        color=OxmlElement("a:srgbClr")
+                        solid.append(color)
+                    color.set("val","000000")
+                    dash=line.find(qn("a:prstDash"))
+                    if dash is None:
+                        dash=OxmlElement("a:prstDash")
+                        line.append(dash)
+                    dash.set("val","solid")
+
+            for ri in range(4):
+                style_ur_table_cell(fresh_table.cell(ri,0),font_pt=8.5)
+                style_ur_table_cell(fresh_table.cell(ri,1),font_pt=8.5)
+            style_ur_table_cell(total_title,fill_rgb="FFC000",font_pt=8.5)
+            style_ur_table_cell(total_value,font_rgb="FF0000",font_pt=9.5)
+
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của\nhệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
         # Slides 7 onward are intentionally kept unchanged for this phase.
