@@ -79,7 +79,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <section id="dashboardView"><div class="dash-head"><div><h1>Thư mục dự án</h1><p class="muted">Quản lý hồ sơ theo từng ngày, giống thư mục trên máy tính.</p></div></div>
 <div class="panel folder-create"><h3>＋ Tạo thư mục mới</h3><div class="row folder-create-row"><div class="field"><label>Tên thư mục</label><input id="newFolderName" placeholder="Ví dụ: Khách hàng Hồng An"></div><div class="field"><label>Ngày tạo</label><input id="newFolderDate" type="date"></div><button class="btn" id="createFolderBtn" type="button" onclick="createFolderFromClick(event)">Tạo thư mục</button></div></div>
 <div id="folderGroups"></div><div id="folderStatus" class="muted"></div></section>
-<section id="folderView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolders()">← Tất cả thư mục</button><div><b id="folderViewTitle">📁 Thư mục</b><div class="muted" id="folderViewDate"></div></div></div><div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">Dự án trong thư mục</h3><p class="muted">Mở dự án đã lưu hoặc bắt đầu tạo dự án mới.</p></div><button class="btn" type="button" onclick="startProject()">＋ Bắt đầu tạo dự án</button></div><div id="folderProjectList" style="margin-top:14px"></div></div></section>
+<section id="folderView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolders()">← Tất cả thư mục</button><div><b id="folderViewTitle">📁 Thư mục</b><div class="muted" id="folderViewDate"></div></div></div><div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">Dự án trong thư mục</h3><p class="muted">Mở dự án đã lưu hoặc bắt đầu tạo dự án mới.</p></div><button class="btn" type="button" id="startProjectBtn" onclick="startProjectDirect(event)">＋ Bắt đầu tạo dự án</button></div><div id="folderProjectList" style="margin-top:14px"></div></div></section>
 <section id="editorView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolder()">← Quay lại thư mục</button><div><b id="currentFolderTitle">Thư mục dự án</b><div class="muted" id="currentFolderDate"></div></div></div>
 <h1>Trung tâm báo giá điện mặt trời</h1><p class='muted'>Website MVP · Dữ liệu lưu trên máy chủ</p>
 <div class='panel' id='loadSizingPanel' style='border:2px solid #cfe3d8'>
@@ -821,6 +821,37 @@ async function logout(){await fetch('/logout',{method:'POST'});location='/login-
 initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{updateTouScheduleDescription();if($('billGroupSelect').value)buildLoadProfileFromTou()});for(const id of ['plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare'])$(id).addEventListener('change',()=>{if($('billGroupSelect').value)buildLoadProfileFromTou()});updateTouScheduleDescription();$('date').value=new Date().toISOString().slice(0,10);$('newFolderDate').value=new Date().toISOString().slice(0,10);calc();renderFolders().catch(e=>$('folderStatus').textContent=e.message);
 </script>
 <script>
+/* Direct project-entry handler: does not depend on inline global function binding. */
+ window.startProjectDirect=function(event){
+  if(event){event.preventDefault();event.stopPropagation()}
+  const status=document.getElementById('folderStatus');
+  const folder=document.getElementById('folderView');
+  const editor=document.getElementById('editorView');
+  const title=document.getElementById('folderViewTitle');
+  const date=document.getElementById('folderViewDate');
+  const currentTitle=document.getElementById('currentFolderTitle');
+  const currentDate=document.getElementById('currentFolderDate');
+  try{
+   if(!folder||!editor)throw new Error('Không tìm thấy màn hình nhập dự án.');
+   if(!window.currentFolderId && !window.__solarCurrentFolderId) {
+    /* Current folder is retained by the main script; validate it via the visible title as fallback. */
+   }
+   if(typeof window.fresh==='function')window.fresh();
+   else throw new Error('Chức năng khởi tạo biểu mẫu dự án chưa sẵn sàng (fresh).');
+   if(currentTitle&&title)currentTitle.textContent=title.textContent;
+   if(currentDate&&date)currentDate.textContent=date.textContent;
+   folder.style.display='none';
+   const dash=document.getElementById('dashboardView');if(dash)dash.style.display='none';
+   editor.style.display='block';
+   const statusEl=document.getElementById('status');
+   if(statusEl)statusEl.textContent='Đang tạo dự án mới. Hãy nhập thông tin và bấm Lưu dự án.';
+   if(status)status.textContent='Đã mở biểu mẫu tạo dự án mới.';
+   window.scrollTo({top:0,behavior:'smooth'});
+  }catch(error){
+   if(status)status.textContent='LỖI MỞ TẠO DỰ ÁN: '+error.message;
+   console.error('startProjectDirect failed',error);
+  }
+ };
 /* Independent folder UI recovery: does not depend on the main editor script. */
 (function(){
  const nameEl=document.getElementById('newFolderName');
