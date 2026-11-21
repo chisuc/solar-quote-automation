@@ -1336,7 +1336,7 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     # Many supplier PDFs extract the right-aligned amount column before the row labels.
     # Recover the three summary amounts by arithmetic reconciliation across the document.
     if subtotal is None or vat is None or total is None:
-        money_tokens=re.findall(r"(?<!\\d)(?:\\d{1,3}(?:[,. ]\\d{3})+|\\d{6,})(?!\\d)",normalized)
+        money_tokens=re.findall(r"(?<!\d)(?:\d{1,3}(?:[,. ]\d{3})+|\d{6,})(?!\d)",normalized)
         money_values=[int(re.sub(r"\\D","",v)) for v in money_tokens]
         candidates=[]
         for idx in range(max(0,len(money_values)-2)):
