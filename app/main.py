@@ -870,7 +870,7 @@ initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{upda
  }
  window.createFolderFromClick=create;
  window.renderFolders=draw;
- if(btn){btn.onclick=create;btn.addEventListener('click',create)}
+ if(btn){btn.onclick=create}
  draw().catch(error=>{if(statusEl)statusEl.textContent='LỖI TẢI THƯ MỤC: '+error.message;console.error('Folder list API error',error)});
 })();
 </script><div id="financialPdfModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(10,20,16,.78);flex-direction:column;padding:12px"><div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px 10px 0 0;padding:10px 14px"><button class="btn alt" type="button" onclick="closeFinancialPdfPreview()">✕ Đóng</button><a id="financialPdfDownload" class="btn" href="#" download style="text-decoration:none">⬇ Tải PDF</a><span style="margin-left:auto;font-size:13px;color:#52665d">Báo cáo PTTC – Trang 5 và 6</span></div><iframe id="financialPdfFrame" title="Xem trước báo cáo PTTC PDF" style="width:100%;height:calc(100vh - 70px);border:0;background:#fff;border-radius:0 0 10px 10px"></iframe></div></main></body></html>"""
