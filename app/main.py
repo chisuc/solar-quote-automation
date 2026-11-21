@@ -216,6 +216,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
   box.textContent='LỖI KHỞI TẠO WEBSITE ('+label+'):\\n'+String(detail||'Không rõ lỗi');
  }
  window.addEventListener('error',function(e){showAppError('JavaScript',e.message+'\\n'+(e.filename||'')+':'+(e.lineno||0)+':'+(e.colno||0));});
+ window.onerror=function(message,source,line,column,error){showAppError('Lỗi cú pháp JavaScript',String(message)+'\\nVị trí: '+line+':'+column+'\\nNguồn: '+source+'\\n'+(error&&error.stack||''));return false;};
  window.addEventListener('unhandledrejection',function(e){const r=e.reason;showAppError('Promise',r&&(r.stack||r.message)||r);});
  window.addEventListener('DOMContentLoaded',function(){setTimeout(function(){const d=document.getElementById('newFolderDate');if(d&&!d.value){
  const ss=Array.from(document.scripts);
