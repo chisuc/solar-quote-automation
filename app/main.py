@@ -1,4 +1,4 @@
-import os, json, uuid, secrets, hmac, mimetypes, asyncio, io, zipfile, re, time, xml.etree.ElementTree as ET
+import os, json, uuid, secrets, hmac, mimetypes, asyncio, io, zipfile, re, time, base64, xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List
 from datetime import datetime, timezone
@@ -170,9 +170,11 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <p class='muted'>Website tự tạo 23 điểm phụ tải sau khi chọn nhóm hóa đơn; có thể chỉnh sửa theo thực tế. Nếu chỉ có hóa đơn một giá hoặc thiếu 3 khung giờ, không đủ cơ sở để tự dựng đường phụ tải theo TOU.</p>
 <div class='row'><button class='btn alt' type='button' onclick='fillFlatLoadProfile()'>Phân bổ đều theo điện ban ngày</button><button class='btn alt' type='button' onclick='clearLoadProfile()'>Xóa dữ liệu nhập</button><button class='btn' type='button' onclick='drawLoadPvComparison()'>Vẽ / cập nhật biểu đồ</button></div>
 <div id='loadProfileInputs' style='display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px'></div>
-<div id='loadPvChart' style='display:none;margin-top:16px;border:1px solid #e2eae5;border-radius:9px;padding:10px'>
+<div id='loadPvChart' style='display:none;margin-top:16px'>
+<div id='urChartCapture' style='width:100%;box-sizing:border-box;background:#fff;border:1px solid #e2eae5;border-radius:9px;padding:10px'>
 <div id='loadPvChartSvg'></div>
 <div style='display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px'><span style='color:#e53935'>━ Phụ tải (kW)</span><span style='color:#168a55'>▰ Solar (kW)</span><span id='batteryLegend' style='color:#2878d0'>▰ Miền công suất xả pin (kW)</span></div>
+</div>
 <div id='loadPvMetrics' class='grid' style='margin-top:12px'></div>
 <p class='muted' id='loadPvNote' style='margin:10px 0 0'></p>
 </div>
@@ -278,7 +280,17 @@ function closeFinancialPdfPreview(){const modal=$('financialPdfModal');$('financ
 async function parseQuotePdf(){const f=$('quotePdfFile').files[0];if(!f){$('quotePdfStatus').textContent='Bạn hãy chọn báo giá PDF trước.';return}if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){$('quotePdfStatus').textContent='Chỉ hỗ trợ file PDF.';return}const fd=new FormData();fd.append('file',f);try{$('quotePdfStatus').textContent='Đang đọc nội dung báo giá PDF...';const resp=await fetch('/api/quote-parse',{method:'POST',body:fd});let data={};try{data=await resp.json()}catch(_){}if(!resp.ok)throw Error(data.detail||'Không đọc được báo giá.');const put=(id,v)=>{if(v!==null&&v!==undefined&&v!==''&&$(id))$(id).value=v};put('investmentSubtotal',data.subtotal);put('investmentVat',data.vat);put('investmentTotal',data.total_including_vat);put('projectName',data.customer_name);put('phone',data.customer_phone);put('address',data.site_address);put('panelBrand',data.panel_brand);put('panelW',data.panel_wp);put('panelQty',data.panel_qty);put('invModel',data.inverter_model);put('invKw',data.inverter_kw);put('phase',data.phase);put('batModel',data.battery_model);put('batKwh',data.battery_kwh);put('batQty',data.battery_qty);if(data.panel_wp&&data.panel_qty)put('pv',(Number(data.panel_wp)*Number(data.panel_qty)/1000).toFixed(3));if(data.battery_kwh&&data.battery_qty)put('batTotal',(Number(data.battery_kwh)*Number(data.battery_qty)).toFixed(2));calc();put('pre',data.subtotal);put('vatMoney',data.vat);put('grand',data.total_including_vat);const fields=[['Tổng trước VAT',data.subtotal],['Tiền VAT',data.vat],['Tổng sau VAT',data.total_including_vat],['Hãng pin',data.panel_brand],['Công suất tấm',data.panel_wp],['Số tấm',data.panel_qty],['Model inverter',data.inverter_model],['Công suất inverter',data.inverter_kw],['Số pha',data.phase],['Model pin lưu trữ',data.battery_model],['Dung lượng mỗi bộ',data.battery_kwh],['Số bộ pin',data.battery_qty]];const found=fields.filter(x=>x[1]!==null&&x[1]!==undefined&&x[1]!=='').map(x=>x[0]).join(', ');const missing=fields.filter(x=>x[1]===null||x[1]===undefined||x[1]==='').map(x=>x[0]).join(', ');$('quotePdfStatus').textContent='Đã đọc '+esc(f.name)+'. Tổng trước VAT: '+(data.subtotal==null?'chưa nhận diện':Number(data.subtotal).toLocaleString('vi-VN')+' đ')+'; VAT: '+(data.vat==null?'chưa nhận diện':Number(data.vat).toLocaleString('vi-VN')+' đ')+'; Tổng sau VAT: '+(data.total_including_vat==null?'chưa nhận diện':Number(data.total_including_vat).toLocaleString('vi-VN')+' đ')+'. Đã tự điền: '+(found||'chưa nhận diện được dữ liệu')+'. '+(missing?'Chưa nhận diện được: '+missing+'.':'Đã nhận diện đủ dữ liệu.')+' '+(data.method==='text'?'Đọc văn bản PDF':'Đọc OCR')+'.';}catch(e){$('quotePdfStatus').textContent='Không đọc được báo giá: '+e.message}}
 
 
-async function generatePresentationReport(){if(!pid){$('presentationStatus').textContent='Hãy lưu dự án trước khi xuất PowerPoint.';return}try{$('presentationStatus').textContent='Đang tạo PowerPoint theo form gốc...';let r=await api('/api/projects/'+pid+'/presentation-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:payload()})});$('presentationStatus').innerHTML='Đã xuất báo giá: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('presentationStatus').textContent='Không xuất được PowerPoint: '+e.message}}
+async function captureUrChartPng(){
+ const target=$('urChartCapture'),chart=$('loadPvChart'),svg=$('loadPvChartSvg')?.querySelector('svg');
+ if(!target||!chart||chart.style.display==='none'||!svg)return null;
+ if(!window.html2canvas){await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';script.onload=resolve;script.onerror=()=>reject(Error('Không tải được công cụ chụp biểu đồ UR.'));document.head.appendChild(script)});}
+ if(typeof window.html2canvas!=='function')throw Error('Không khởi tạo được công cụ chụp biểu đồ UR.');
+ if(document.fonts?.ready)await document.fonts.ready;
+ const canvas=await window.html2canvas(target,{backgroundColor:'#ffffff',scale:Math.max(2,Math.min(3,window.devicePixelRatio||1)),useCORS:true,logging:false});
+ if(!canvas.width||!canvas.height)throw Error('Ảnh chụp biểu đồ UR không hợp lệ.');
+ return canvas.toDataURL('image/png');
+}
+async function generatePresentationReport(){if(!pid){$('presentationStatus').textContent='Hãy lưu dự án trước khi xuất PowerPoint.';return}try{$('presentationStatus').textContent='Đang chụp đúng vùng biểu đồ UR...';const urChartPng=await captureUrChartPng();$('presentationStatus').textContent=urChartPng?'Đã chụp biểu đồ UR. Đang chèn vào slide...':'Không thấy biểu đồ UR đang hiển thị; sử dụng biểu đồ dự phòng từ dữ liệu.';let r=await api('/api/projects/'+pid+'/presentation-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:payload(),ur_chart_png:urChartPng})});$('presentationStatus').innerHTML='Đã xuất báo giá: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>'+(urChartPng?' · Đã chèn ảnh chụp trực tiếp biểu đồ UR':'');await listFiles()}catch(e){$('presentationStatus').textContent='Không xuất được PowerPoint: '+e.message}}
 
 
 function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.customer=o.projectName||'';o.contact='';o.loadSizingResult=loadSizingResult;o.loadProfileKw=loadProfileTimes.map((_,i)=>$('loadProfile'+i)?.value??'');o.touScheduleMode=$('touScheduleMode')?.value||'old';o.financialOverrides=financialOverrides;o.financialReportId=financialReportId;o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;o.gsaImages=gsaImages;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined&&$(k))$(k).value=o[k]});if(!o.projectName&&o.customer&&$('projectName'))$('projectName').value=o.customer;loadSizingResult=o.loadSizingResult||null;if(o.touScheduleMode&&$('touScheduleMode')){$('touScheduleMode').value=o.touScheduleMode;updateTouScheduleDescription()}if(Array.isArray(o.loadProfileKw)){o.loadProfileKw.forEach((v,i)=>{if(i<23&&$('loadProfile'+i))$('loadProfile'+i).value=v??''});if(o.loadProfileKw.length===23&&o.loadProfileKw.some(v=>v!==''&&v!==null&&v!==undefined)){try{drawLoadPvComparison()}catch(_){}}}if(loadSizingResult){$('billMonthKwh').value=loadSizingResult.monthlyKwh||'';$('billDays').value=loadSizingResult.billDays||30;$('billDayShare').value=loadSizingResult.dayShare||65;calcBillNightShare();calculateLoadSizing()}else{$('loadSizingResults').style.display='none'}financialOverrides=o.financialOverrides||{};financialReportId=o.financialReportId||null;showFinancialOverrides();pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;gsaImages=o.gsaImages||[];renderGSAImages();renderPV();calc()}
@@ -2244,6 +2256,24 @@ def _ppt_photo_collage(items, target_ratio):
 async def create_presentation_report(pid:str,request:Request):
     auth(request)
     body=await request.json()
+    ur_chart_png=None
+    encoded_chart=body.get("ur_chart_png")
+    if encoded_chart:
+        prefix="data:image/png;base64,"
+        if not isinstance(encoded_chart,str) or not encoded_chart.startswith(prefix):
+            raise HTTPException(400,"Ảnh chụp biểu đồ UR không đúng định dạng PNG.")
+        try:
+            ur_chart_png=base64.b64decode(encoded_chart[len(prefix):],validate=True)
+            if len(ur_chart_png)>12*1024*1024:
+                raise HTTPException(413,"Ảnh chụp biểu đồ UR vượt quá 12 MB.")
+            with Image.open(io.BytesIO(ur_chart_png)) as check_image:
+                if check_image.format!="PNG" or check_image.width<500 or check_image.height<150:
+                    raise ValueError("Kích thước ảnh không hợp lệ.")
+                check_image.verify()
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(400,"Không đọc được ảnh chụp biểu đồ UR.")
     rows=sb_request("GET",db("projects"),params={"id":f"eq.{pid}","select":"id,payload"}).json()
     if not rows or (rows[0].get("payload") or {}).get("_recordType")=="folder":
         raise HTTPException(404,"Không tìm thấy dự án.")
@@ -2403,7 +2433,24 @@ async def create_presentation_report(pid:str,request:Request):
             chart_payload=dict(p)
             chart_payload["_slide5ChartRatio"]=chart_frame.width/max(chart_frame.height,1)
             load_chart_bytes,load_chart_metrics=_ppt_load_profile_chart(chart_payload)
-            if load_chart_bytes: _ppt_replace_picture(slide5,chart_frame,load_chart_bytes)
+            if ur_chart_png:
+                # Place the browser screenshot in the existing slide frame without
+                # cropping or stretching; center it and preserve its aspect ratio.
+                with Image.open(io.BytesIO(ur_chart_png)) as captured:
+                    captured=captured.convert("RGB")
+                    ratio=captured.width/max(captured.height,1)
+                    frame_left,frame_top,frame_width,frame_height=chart_frame.left,chart_frame.top,chart_frame.width,chart_frame.height
+                    frame_ratio=frame_width/max(frame_height,1)
+                    if ratio>frame_ratio:
+                        new_width=frame_width; new_height=int(new_width/ratio)
+                    else:
+                        new_height=frame_height; new_width=int(new_height*ratio)
+                    chart_frame.left=frame_left+(frame_width-new_width)//2
+                    chart_frame.top=frame_top+(frame_height-new_height)//2
+                    chart_frame.width=new_width; chart_frame.height=new_height
+                _ppt_replace_picture(slide5,chart_frame,ur_chart_png)
+            elif load_chart_bytes:
+                _ppt_replace_picture(slide5,chart_frame,load_chart_bytes)
         else:
             load_chart_metrics={}
         # Populate the existing right-hand chart summary table from project/chart data.
