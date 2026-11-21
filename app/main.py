@@ -2016,6 +2016,30 @@ def _ppt_set_shape_text(shape,text):
                     para.runs[0]._r.rPr=deepcopy(source.runs[0]._r.rPr)
         _ppt_set_paragraph_text(para,line)
 
+def _ppt_set_paragraph_label_value(paragraph,label,value,label_color="000000",value_color="C00000"):
+    """Set a label/value line with explicit colors while retaining source typography."""
+    from copy import deepcopy
+    from pptx.dml.color import RGBColor
+    runs=list(paragraph.runs)
+    if not runs:
+        label_run=paragraph.add_run()
+        value_run=paragraph.add_run()
+    elif len(runs)==1:
+        label_run=runs[0]
+        value_run=paragraph.add_run()
+        if runs[0]._r.rPr is not None:
+            value_run._r.get_or_add_rPr()
+            value_run._r.rPr=deepcopy(runs[0]._r.rPr)
+    else:
+        label_run=runs[0]
+        value_run=runs[-1]
+        for extra in runs[1:-1]:
+            extra.text=""
+    label_run.text=label
+    value_run.text=value
+    label_run.font.color.rgb=RGBColor.from_string(label_color)
+    value_run.font.color.rgb=RGBColor.from_string(value_color)
+
 def _ppt_set_cell_text(cell,text):
     """Update a table cell while keeping its original paragraph/run styles."""
     _ppt_set_shape_text(cell,text)
@@ -2208,8 +2232,15 @@ async def create_presentation_report(pid:str,request:Request):
         # Slide 5: sizing, tariff and usage
         text_shape(prs.slides[4],7,f"Đơn giá điện trung bình :\n{fmt(price,0)} VNĐ/kWh\n(bao gồm VAT)")
         text_shape(prs.slides[4],9,"Thói quen dùng điện: "+val("usagePattern","Chưa cập nhật"))
+        sizing_shape=prs.slides[4].shapes[11]
         text_shape(prs.slides[4],11,f"Hệ thống đề xuất:\nCông suất: {fmt(pv)} kWp\nDung lượng lưu trữ: {fmt(battery)} kWh\nTỉ lệ tiêu thụ điện ước tính: {fmt(self_use,1)}%")
-        text_shape(prs.slides[4],14,f"Số điện:\n~{fmt(monthly_load,0)} kWh/tháng")
+        # Keep storage label black and highlight the self-consumption percentage in red.
+        if sizing_shape.has_text_frame and len(sizing_shape.text_frame.paragraphs)>=4:
+            _ppt_set_paragraph_label_value(sizing_shape.text_frame.paragraphs[2],"Dung lượng lưu trữ: ",f"{fmt(battery)} kWh")
+            _ppt_set_paragraph_label_value(sizing_shape.text_frame.paragraphs[3],"Tỉ lệ tiêu thụ điện ước tính: ",f"{fmt(self_use,1)}%")
+        monthly_bill=monthly_load*price
+        monthly_bill_million=fmt(monthly_bill/1_000_000,1)
+        text_shape(prs.slides[4],14,f"Tiền điện trung bình:\n~{monthly_bill_million} triệu/tháng")
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của\nhệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
         # Slides 7 onward are intentionally kept unchanged for this phase.
