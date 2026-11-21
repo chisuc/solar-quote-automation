@@ -1456,13 +1456,13 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
         if not re.search(r"^(Công ty|BÁO GIÁ|Địa chỉ:|Điện thoại:|Web:)",first,re.I):
             customer_name=first
     for line in all_lines[:6]:
-        if re.search(r"(Kp\\s*\\d+|khu phố|phường|quận|huyện|thành phố|tỉnh|việt nam)",line,re.I):
+        if re.search(r"(Kp\s*\d+|khu phố|phường|quận|huyện|thành phố|tỉnh|việt nam)",line,re.I):
             site_address=line
             break
     # Fallback to a conventional label/value layout when the PDF keeps values beside labels.
     def value_after_label(label):
         for ix,line in enumerate(all_lines):
-            m=re.match(r"^"+label+r"\\b\\s*[:：]?\\s*(.*)$",line,re.I)
+            m=re.match(r"^"+label+r"\b\s*[:：]?\s*(.*)$",line,re.I)
             if m and m.group(1).strip():
                 return m.group(1).strip()
             if m and ix+1<len(all_lines):
@@ -1475,12 +1475,12 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     if not site_address:
         site_address=value_after_label("Địa chỉ")
     for ix,line in enumerate(all_lines):
-        m=re.match(r"^Điện thoại\\b\\s*[:：]?\\s*(.*)$",line,re.I)
+        m=re.match(r"^Điện thoại\b\s*[:：]?\s*(.*)$",line,re.I)
         if m:
             candidate=m.group(1).strip()
             if not candidate and ix+1<len(all_lines):
                 candidate=all_lines[ix+1].strip()
-            digits=re.sub(r"\\D","",candidate)
+            digits=re.sub(r"\D","",candidate)
             if 9<=len(digits)<=11:
                 customer_phone=digits
                 break
