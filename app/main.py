@@ -569,7 +569,8 @@ function drawLoadPvComparison(){
    const dischargeEff=Math.min(1,Math.max(.01,(Number($('billDischargeEff')?.value)||95)/100));
    const usableCapacity=household?Math.max(0,totalBattery*dod):0;
    const minSoc=1-dod;
-   const initialSoc=Math.min(1,Math.max(0,(Number($('billInitialSoc')?.value)||minSoc*100)/100));
+   const initialSocRaw=$('billInitialSoc')?.value;
+   const initialSoc=Math.min(1,Math.max(0,((initialSocRaw===''||initialSocRaw==null)?minSoc*100:Number(initialSocRaw))/100));
    let remaining=household?Math.min(usableCapacity,Math.max(0,totalBattery*(initialSoc-minSoc))):0;
    for(let i=0;i<intervals;i++){
     const le=load[i]*.5,pe=pvAt(i)*.5,used=Math.min(le,pe),surplus=Math.max(0,pe-le),deficit=Math.max(0,le-pe);
