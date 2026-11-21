@@ -79,7 +79,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <section id="dashboardView"><div class="dash-head"><div><h1>Thư mục dự án</h1><p class="muted">Quản lý hồ sơ theo từng ngày, giống thư mục trên máy tính.</p></div></div>
 <div class="panel folder-create"><h3>＋ Tạo thư mục mới</h3><div class="row folder-create-row"><div class="field"><label>Tên thư mục</label><input id="newFolderName" placeholder="Ví dụ: Khách hàng Hồng An"></div><div class="field"><label>Ngày tạo</label><input id="newFolderDate" type="date"></div><button class="btn" id="createFolderBtn" type="button" onclick="createFolderFromClick(event)">Tạo thư mục</button></div></div>
 <div id="folderGroups"></div><div id="folderStatus" class="muted"></div></section>
-<section id="folderView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolders()">← Tất cả thư mục</button><div><b id="folderViewTitle">📁 Thư mục</b><div class="muted" id="folderViewDate"></div></div></div><div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">Dự án trong thư mục</h3><p class="muted">Mở dự án đã lưu hoặc bắt đầu tạo dự án mới.</p></div><button class="btn" type="button" id="startProjectBtn" onclick="startProjectDirect(event)">＋ Bắt đầu tạo dự án</button></div><div id="folderProjectList" style="margin-top:14px"></div></div></section>
+<section id="folderView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolders()">← Tất cả thư mục</button><div><b id="folderViewTitle">📁 Thư mục</b><div class="muted" id="folderViewDate"></div></div></div><div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">Dự án trong thư mục</h3><p class="muted">Mở dự án đã lưu hoặc bắt đầu tạo dự án mới.</p></div><button class="btn" type="button" id="startProjectBtn" onclick="startProjectDirect(event)">＋ Bắt đầu tạo dự án</button></div><div id="folderProjectList" style="margin-top:14px"></div><div id="folderActionStatus" class="muted" style="margin-top:10px" aria-live="polite"></div></div></section>
 <section id="editorView" style="display:none"><div class="row editor-toolbar"><button class="btn alt" type="button" onclick="backToFolder()">← Quay lại thư mục</button><div><b id="currentFolderTitle">Thư mục dự án</b><div class="muted" id="currentFolderDate"></div></div></div>
 <h1>Trung tâm báo giá điện mặt trời</h1><p class='muted'>Website MVP · Dữ liệu lưu trên máy chủ</p>
 <div class='panel' id='loadSizingPanel' style='border:2px solid #cfe3d8'>
@@ -825,7 +825,7 @@ initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{upda
 /* Direct project-entry handler: does not depend on inline global function binding. */
  window.startProjectDirect=function(event){
   if(event){event.preventDefault();event.stopPropagation()}
-  const status=document.getElementById('folderStatus');
+  const status=document.getElementById('folderActionStatus')||document.getElementById('folderStatus');
   const folder=document.getElementById('folderView');
   const editor=document.getElementById('editorView');
   const title=document.getElementById('folderViewTitle');
@@ -860,7 +860,24 @@ initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{upda
  const statusEl=document.getElementById('folderStatus');
  const groupsEl=document.getElementById('folderGroups');
  const btn=document.getElementById('createFolderBtn');
+ const startBtn=document.getElementById('startProjectBtn');
+ const actionStatus=document.getElementById('folderActionStatus');
  const escText=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ if(startBtn){
+  startBtn.removeAttribute('onclick');
+  startBtn.addEventListener('click',function(event){
+   event.preventDefault();
+   if(actionStatus)actionStatus.textContent='Đang mở biểu mẫu tạo dự án...';
+   try{
+    if(typeof window.startProjectDirect!=='function')throw new Error('Chưa nạp được chức năng tạo dự án. Hãy tải lại trang.');
+    window.startProjectDirect(event);
+    if(actionStatus)actionStatus.textContent='Đã yêu cầu mở biểu mẫu tạo dự án.';
+   }catch(error){
+    if(actionStatus)actionStatus.textContent='LỖI: '+error.message;
+    console.error('start project button click error',error);
+   }
+  });
+ }
  async function request(url,options){
   const response=await fetch(url,{credentials:'same-origin',...options});
   let body={};try{body=await response.json()}catch(_){}
