@@ -1881,7 +1881,7 @@ def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
 
         def normalized_page(page):
             raw=page.extract_text() or ""
-            raw=unicodedata.normalize("NFD",raw)
+            raw=unicodedata.normalize("NFD",raw).replace("Đ","D").replace("đ","d")
             raw="".join(ch for ch in raw if not unicodedata.combining(ch))
             return re.sub(r"\s+"," ",raw).upper()
 
