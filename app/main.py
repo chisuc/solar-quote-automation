@@ -1444,22 +1444,36 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     battery_kwh=float(battery_kwh_raw.replace(",",".")) if battery_kwh_raw else None
     battery_qty_raw=first(r"\bBộ\s+(\d{1,3})\b",battery_section)
     battery_qty=int(battery_qty_raw) if battery_qty_raw else None
-    # Extract customer/project details from the customer-information area.
-    all_lines=[re.sub(r"[ \\t]+"," ",line).strip() for line in normalized.splitlines() if line.strip()]
+    # Customer values can be emitted before table labels by some PDF generators.
+    all_lines=[re.sub(r"[ \t]+"," ",line).strip() for line in normalized.splitlines() if line.strip()]
+    customer_name=None
+    site_address=None
+    customer_phone=None
+    # In this supplier template, the customer name and address are the first two
+    # text lines on page 1, before the item table and supplier header.
+    if all_lines:
+        first=all_lines[0]
+        if not re.search(r"^(Công ty|BÁO GIÁ|Địa chỉ:|Điện thoại:|Web:)",first,re.I):
+            customer_name=first
+    for line in all_lines[:6]:
+        if re.search(r"(Kp\\s*\\d+|khu phố|phường|quận|huyện|thành phố|tỉnh|việt nam)",line,re.I):
+            site_address=line
+            break
+    # Fallback to a conventional label/value layout when the PDF keeps values beside labels.
     def value_after_label(label):
         for ix,line in enumerate(all_lines):
-            if re.match(r"^"+label+r"\\b\\s*[:：]?\\s*(.*)$",line,re.I):
-                same=re.sub(r"^"+label+r"\\b\\s*[:：]?\\s*","",line,flags=re.I).strip()
-                if same and not re.search(r"^(Mô tả chung|STT|Email|Điện thoại)$",same,re.I):
-                    return same
-                if ix+1<len(all_lines):
-                    nxt=all_lines[ix+1].strip()
-                    if nxt and not re.match(r"^(Mô tả chung|STT|Email|Điện thoại|BÁO GIÁ)",nxt,re.I):
-                        return nxt
+            m=re.match(r"^"+label+r"\\b\\s*[:：]?\\s*(.*)$",line,re.I)
+            if m and m.group(1).strip():
+                return m.group(1).strip()
+            if m and ix+1<len(all_lines):
+                nxt=all_lines[ix+1].strip()
+                if nxt and not re.match(r"^(Mô tả chung|STT|Email|Điện thoại|BÁO GIÁ)",nxt,re.I):
+                    return nxt
         return None
-    customer_name=value_after_label("Tên")
-    site_address=value_after_label("Địa chỉ")
-    customer_phone=None
+    if not customer_name:
+        customer_name=value_after_label("Tên")
+    if not site_address:
+        site_address=value_after_label("Địa chỉ")
     for ix,line in enumerate(all_lines):
         m=re.match(r"^Điện thoại\\b\\s*[:：]?\\s*(.*)$",line,re.I)
         if m:
