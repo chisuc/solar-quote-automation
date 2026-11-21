@@ -210,7 +210,8 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <script>
 const pvDetails=document.getElementById('pvwattsOptions');
 if(pvDetails){pvDetails.addEventListener('toggle',()=>{const b=document.getElementById('pvwattsToggleLabel');if(b)b.textContent=pvDetails.open?'− Thu gọn mô phỏng':'＋ Mở mô phỏng'})}
-let pid=null,pvwattsResult=null,gsaImages=[],financialReportId=null,currentFolderId=null,currentFolderName='',currentFolderDate='';const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','phone','address','date','quoteValidUntil','industry','solarRadiation','investmentSubtotal','investmentVat','investmentTotal','roofCondition','usagePattern','roof','roofType','plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat','inverterPrice','batteryPrice'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
+let pid=null,pvwattsResult=null,gsaImages=[],financialReportId=null,currentFolderId=null,currentFolderName='',currentFolderDate='';
+window.__setCurrentFolderContext=(id,name,date)=>{currentFolderId=id;currentFolderName=name||'';currentFolderDate=date||''};const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','phone','address','date','quoteValidUntil','industry','solarRadiation','investmentSubtotal','investmentVat','investmentTotal','roofCondition','usagePattern','roof','roofType','plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat','inverterPrice','batteryPrice'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
 function createFolderFromClick(event){if(event)event.preventDefault();const status=$('folderStatus');if(status)status.textContent='Đang gửi yêu cầu tạo thư mục...';createFolder().catch(err=>{if(status)status.textContent='Không tạo được thư mục: '+(err&&err.message?err.message:String(err));console.error('createFolderFromClick',err)})}
 function setQuoteAuto(id,value){const cb=$('auto_'+id),el=$(id);if(cb&&cb.checked&&value!==null&&value!==undefined&&Number.isFinite(Number(value)))el.value=Number(value).toFixed(id==='load'||id==='annual'?2: id==='price'?2:0)}
 function toggleQuoteAuto(id){const cb=$('auto_'+id),el=$(id);if(el)el.readOnly=!!cb.checked&&(id==='vatMoney'||id==='grand');syncQuoteAuto();calc()}
@@ -885,6 +886,7 @@ initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{upda
    const folder=folders.find(x=>String(x.id)===String(id));
    if(!folder)throw new Error('Không tìm thấy thư mục trong dữ liệu máy chủ.');
    const projects=await request('/api/folders/'+encodeURIComponent(id)+'/projects');
+   if(typeof window.__setCurrentFolderContext==='function')window.__setCurrentFolderContext(id,folder.name,folder.date||'');
    const dash=document.getElementById('dashboardView'),view=document.getElementById('folderView');
    if(!view||!dash)throw new Error('Không tìm thấy vùng hiển thị thư mục.');
    const title=document.getElementById('folderViewTitle'),date=document.getElementById('folderViewDate');
