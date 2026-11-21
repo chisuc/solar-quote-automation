@@ -2267,6 +2267,9 @@ async def create_presentation_report(pid:str,request:Request):
                     _ppt_set_paragraph_label_value(
                         para,"✓ Hóa đơn ",f"{monthly_bill_million} triệu/tháng."
                     )
+                    # Emphasize the monthly bill amount and unit in bold.
+                    if para.runs:
+                        para.runs[-1].font.bold=True
                     bill_line_updated=True
                     break
             if bill_line_updated:
@@ -2364,7 +2367,8 @@ async def create_presentation_report(pid:str,request:Request):
             "thoi gian hoan von khong tinh lam phat":payback_text,
             "irr":irr_text,
             "npv":npv_text,
-            "dong tien thuan luy ke":cumulative_text
+            # Use the exact same 30-year accumulated savings figure shown on slide 3.
+            "dong tien thuan luy ke":savings_text+" tỷ đồng"
         }
         summary_table=next((sh.table for sh in slide10.shapes if sh.has_table),None)
         if summary_table is None:
