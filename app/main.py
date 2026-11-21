@@ -2471,9 +2471,39 @@ async def create_presentation_report(pid:str,request:Request):
                 _ppt_replace_picture(slide5,chart_frame,load_chart_bytes)
         else:
             load_chart_metrics={}
-        # Populate the existing right-hand chart summary table from project/chart data.
-        slide5_table=next((sh.table for sh in slide5.shapes if sh.has_table),None)
+        # Populate and enlarge the existing right-hand summary table beside the UR chart.
+        from pptx.util import Inches, Pt
+        from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+        slide5_table_shape=next((sh for sh in slide5.shapes if sh.has_table),None)
+        slide5_table=slide5_table_shape.table if slide5_table_shape is not None else None
         if slide5_table is not None and len(slide5_table.rows)>1:
+            # Use the available space to the right of the chart, preserving a clear gap.
+            if picture_candidates:
+                gap=Inches(0.18)
+                right_margin=Inches(0.22)
+                table_left=chart_frame.left+chart_frame.width+gap
+                table_width=prs.slide_width-table_left-right_margin
+                if table_width>Inches(2.4):
+                    slide5_table_shape.left=table_left
+                    slide5_table.columns[0].width=int(table_width*0.75)
+                    if len(slide5_table.columns)>1:
+                        slide5_table.columns[1].width=table_width-slide5_table.columns[0].width
+                # Expand the table vertically into the open area around the chart.
+                table_height=Inches(3.45)
+                table_top=max(Inches(0.85),chart_frame.top-Inches(1.18))
+                max_bottom=prs.slide_height-Inches(0.42)
+                if table_top+table_height>max_bottom:
+                    table_height=max_bottom-table_top
+                slide5_table_shape.top=table_top
+                row_weights=[0.58,0.58,0.58,0.58,0.55,0.58]
+                if len(slide5_table.rows)==len(row_weights):
+                    for row,weight in zip(slide5_table.rows,row_weights):
+                        row.height=Inches(weight)
+                else:
+                    each=table_height/len(slide5_table.rows)
+                    for row in slide5_table.rows:
+                        row.height=each
+            # Keep the template's labels, borders and yellow total row; only fill values.
             for rr in range(1,len(slide5_table.rows)):
                 row=slide5_table.rows[rr]
                 raw_label=row.cells[0].text.lower()
@@ -2485,6 +2515,19 @@ async def create_presentation_report(pid:str,request:Request):
                 elif "ti le tu tieu thu" in label: value=fmt(load_chart_metrics["pv_self_rate"],1)+"%" if "pv_self_rate" in load_chart_metrics else ""
                 elif "tong ti le tieu thu" in label: value="100%"
                 if value is not None: _ppt_set_cell_text(row.cells[-1],value)
+            # Increase readability while preserving the template's existing colors and borders.
+            for ri,row in enumerate(slide5_table.rows):
+                for cell in row.cells:
+                    cell.vertical_anchor=MSO_ANCHOR.MIDDLE
+                    cell.margin_left=Inches(0.045)
+                    cell.margin_right=Inches(0.045)
+                    cell.margin_top=Inches(0.035)
+                    cell.margin_bottom=Inches(0.035)
+                    cell.text_frame.word_wrap=True
+                    for para in cell.text_frame.paragraphs:
+                        para.alignment=PP_ALIGN.CENTER
+                        for run in para.runs:
+                            run.font.size=Pt(12 if ri<5 else 14)
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của\nhệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
         # Slides 7 onward are intentionally kept unchanged for this phase.
