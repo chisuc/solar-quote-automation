@@ -223,7 +223,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
  const tail=ss[ss.length-1];
  let parse='không kiểm tra được';
  try{if(tail&&tail.textContent)new Function(tail.textContent),parse='cú pháp hợp lệ';else parse='script cuối rỗng'}
- catch(e){parse='LỖI CÚ PHÁP: '+e.message}
+ catch(e){parse='LỖI CÚ PHÁP: '+e.message+'; VỊ TRÍ: '+String(e.stack||'').split('\\n').slice(0,3).join(' | ')}
  const info='Bước: '+(window.__solarInitStage||'main script chưa chạy')+'; script tags='+ss.length+'; script cuối='+((tail&&tail.textContent||'').length)+' ký tự; '+parse+'; có marker='+(!!(tail&&tail.textContent.includes('__solarInitStage')));
  showAppError('Khởi tạo bị dừng',info);
 }},1200);});
