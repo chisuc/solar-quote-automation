@@ -819,6 +819,60 @@ async function listFiles(){if(!pid)return;let a=await api('/api/projects/'+pid+'
 function exportJson(){let b=new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='du-an.json';a.click()}
 async function logout(){await fetch('/logout',{method:'POST'});location='/login-page'}
 initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{updateTouScheduleDescription();if($('billGroupSelect').value)buildLoadProfileFromTou()});for(const id of ['plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare'])$(id).addEventListener('change',()=>{if($('billGroupSelect').value)buildLoadProfileFromTou()});updateTouScheduleDescription();$('date').value=new Date().toISOString().slice(0,10);$('newFolderDate').value=new Date().toISOString().slice(0,10);calc();renderFolders().catch(e=>$('folderStatus').textContent=e.message);
+</script>
+<script>
+/* Independent folder UI recovery: does not depend on the main editor script. */
+(function(){
+ const nameEl=document.getElementById('newFolderName');
+ const dateEl=document.getElementById('newFolderDate');
+ const statusEl=document.getElementById('folderStatus');
+ const groupsEl=document.getElementById('folderGroups');
+ const btn=document.getElementById('createFolderBtn');
+ const escText=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ async function request(url,options){
+  const response=await fetch(url,{credentials:'same-origin',...options});
+  let body={};try{body=await response.json()}catch(_){}
+  if(!response.ok)throw new Error(body.detail||body.message||('HTTP '+response.status));
+  return body;
+ }
+ async function draw(){
+  const folders=await request('/api/folders');
+  const byDate={};
+  folders.forEach(f=>{const d=f.date||'Chưa phân loại ngày';(byDate[d]??=[]).push(f)});
+  groupsEl.innerHTML=Object.keys(byDate).sort((a,b)=>b.localeCompare(a)).map(d=>
+   '<section class="folder-date-group"><div class="folder-date-title">'+escText(d)+'</div><div class="folder-grid">'+byDate[d].map(f=>
+    '<div class="folder-card"><div class="folder-icon">📁</div><h3>'+escText(f.name)+'</h3><div class="muted">Thư mục dự án · '+escText(f.date||'')+'</div><div class="folder-actions"><button class="btn" type="button" data-open-folder="'+escText(f.id)+'">Mở thư mục</button></div></div>'
+   ).join('')+'</div></section>'
+  ).join('')||'<div class="panel muted">Chưa có thư mục hoặc dự án cũ trong cơ sở dữ liệu đang kết nối.</div>';
+  groupsEl.querySelectorAll('[data-open-folder]').forEach(b=>b.addEventListener('click',()=>{
+   if(typeof window.openFolder==='function')window.openFolder(b.dataset.openFolder);
+   else if(statusEl)statusEl.textContent='Danh sách đã tải, nhưng trình chỉnh sửa chưa khởi tạo. Hãy tải lại trang.';
+  }));
+  if(statusEl)statusEl.textContent='Đã kết nối API thư mục. Số thư mục hiển thị: '+folders.length+'.';
+  return folders;
+ }
+ async function create(event){
+  if(event){event.preventDefault();event.stopPropagation()}
+  if(!nameEl||!statusEl)return;
+  const name=nameEl.value.trim();
+  if(!name){statusEl.textContent='Vui lòng nhập tên thư mục.';nameEl.focus();return}
+  if(btn){btn.disabled=true;btn.textContent='ĐANG TẠO...'}
+  statusEl.textContent='Đang gửi yêu cầu tạo "'+name+'" lên máy chủ...';
+  try{
+   const result=await request('/api/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,date:dateEl?dateEl.value:''})});
+   nameEl.value='';
+   await draw();
+   statusEl.textContent='TẠO THÀNH CÔNG: '+(result.name||name)+'.';
+  }catch(error){
+   statusEl.textContent='LỖI TẠO THƯ MỤC: '+error.message;
+   console.error('Folder create API error',error);
+  }finally{if(btn){btn.disabled=false;btn.textContent='Tạo thư mục'}}
+ }
+ window.createFolderFromClick=create;
+ window.renderFolders=draw;
+ if(btn){btn.onclick=create;btn.addEventListener('click',create)}
+ draw().catch(error=>{if(statusEl)statusEl.textContent='LỖI TẢI THƯ MỤC: '+error.message;console.error('Folder list API error',error)});
+})();
 </script><div id="financialPdfModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(10,20,16,.78);flex-direction:column;padding:12px"><div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px 10px 0 0;padding:10px 14px"><button class="btn alt" type="button" onclick="closeFinancialPdfPreview()">✕ Đóng</button><a id="financialPdfDownload" class="btn" href="#" download style="text-decoration:none">⬇ Tải PDF</a><span style="margin-left:auto;font-size:13px;color:#52665d">Báo cáo PTTC – Trang 5 và 6</span></div><iframe id="financialPdfFrame" title="Xem trước báo cáo PTTC PDF" style="width:100%;height:calc(100vh - 70px);border:0;background:#fff;border-radius:0 0 10px 10px"></iframe></div></main></body></html>"""
 
 @app.get("/health")
