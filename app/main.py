@@ -109,8 +109,9 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 <div class='field'><label>Tỷ lệ pin đáp ứng điện ban đêm (%)</label><input id='billNightCoverage' type='number' min='0' max='100' step='1' value='100'><small class='muted'>Mặc định 100%; có thể giảm xuống 70–90% tùy mục tiêu đầu tư.</small></div>
 <div class='field'><label>Số giờ nắng đỉnh PSH (h/ngày)</label><input id='billPsh' type='number' min='.5' max='8' step='.1' value='4'></div>
 <div class='field'><label>Độ sâu xả pin DoD (%)</label><input id='billDod' type='number' min='50' max='100' step='1' value='90'></div>
-<div class='field'><label>Hiệu suất sạc pin (%)</label><input id='billChargeEff' type='number' min='50' max='100' step='1' value='100'></div>
-<div class='field'><label>Hiệu suất xả pin (%)</label><input id='billDischargeEff' type='number' min='50' max='100' step='1' value='100'></div>
+<div class='field'><label>SOC ban đầu lúc 06:00 (%)</label><input id='billInitialSoc' type='number' min='0' max='100' step='1' value='10'><small class='muted'>Mặc định bằng SOC dự trữ tối thiểu (100% − DoD), không giả định pin đầy từ sáng. Có thể điều chỉnh theo SOC thực tế.</small></div>
+<div class='field'><label>Hiệu suất sạc pin (%)</label><input id='billChargeEff' type='number' min='50' max='100' step='1' value='95'></div>
+<div class='field'><label>Hiệu suất xả pin (%)</label><input id='billDischargeEff' type='number' min='50' max='100' step='1' value='95'></div>
 </div>
 <div class='row'><button class='btn' type='button' onclick='calculateLoadSizing()'>Tính điện năng & đề xuất</button><button class='btn alt' type='button' onclick='applyLoadSizing()'>Áp dụng vào cấu hình dự án</button></div>
 <div id='loadSizingStatus' class='muted'>Chưa tính toán.</div>
@@ -248,7 +249,7 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
 window.__solarInitStage='main-script-entered';
 const pvDetails=document.getElementById('pvwattsOptions');
 if(pvDetails){pvDetails.addEventListener('toggle',()=>{const b=document.getElementById('pvwattsToggleLabel');if(b)b.textContent=pvDetails.open?'− Thu gọn mô phỏng':'＋ Mở mô phỏng'})}
-let pid=null,pvwattsResult=null,gsaImages=[],financialReportId=null,currentFolderId=null,currentFolderName='',currentFolderDate='';const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','phone','address','date','quoteValidUntil','industry','solarRadiation','investmentSubtotal','investmentVat','investmentTotal','roofCondition','usagePattern','roof','roofType','plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','vat','inverterPrice','batteryPrice'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
+let pid=null,pvwattsResult=null,gsaImages=[],financialReportId=null,currentFolderId=null,currentFolderName='',currentFolderDate='';const ids=['lat','lon','pvSystemSize','moduleType','arrayType','tilt','azimuth','losses','dcAcRatio','invEff','gcr','albedoMode','albedo','projectName','phone','address','date','quoteValidUntil','industry','solarRadiation','investmentSubtotal','investmentVat','investmentTotal','roofCondition','usagePattern','roof','roofType','plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare','panelBrand','panelW','panelQty','invModel','invKw','phase','batModel','batKwh','batQty','load','annual','self','price','pre','billDod','billInitialSoc','billChargeEff','billDischargeEff','vat','inverterPrice','batteryPrice'];const $=x=>document.getElementById(x),n=x=>Number($(x).value)||0;
 function createFolderFromClick(event){if(event)event.preventDefault();const status=$('folderStatus');if(status)status.textContent='Đang gửi yêu cầu tạo thư mục...';createFolder().catch(err=>{if(status)status.textContent='Không tạo được thư mục: '+(err&&err.message?err.message:String(err));console.error('createFolderFromClick',err)})}
 function setQuoteAuto(id,value){const cb=$('auto_'+id),el=$(id);if(cb&&cb.checked&&value!==null&&value!==undefined&&Number.isFinite(Number(value)))el.value=Number(value).toFixed(id==='load'||id==='annual'?2: id==='price'?2:0)}
 function toggleQuoteAuto(id){const cb=$('auto_'+id),el=$(id);if(el)el.readOnly=!!cb.checked&&(id==='vatMoney'||id==='grand');syncQuoteAuto();calc()}
@@ -562,14 +563,31 @@ function drawLoadPvComparison(){
   let selfUse=0,gridImport=0,exportEnergy=0,batteryDischarge=0,batteryExhaustAt=null,daytimeLoad6to17=0,daytimePv6to17=0,daytimeSelfUse6to17=0;
   const batteryCurve=Array(intervals).fill(0),batteryFillRatio=Array(intervals).fill(0);
   if(hasPv){
-   let remaining=0;
-   if(household){const total=Number($('batTotal')?.value)||((Number($('batKwh')?.value)||loadSizingResult?.batteryKwh||0)*(Number($('batQty')?.value)||1));const dod=(Number($('billDod')?.value)||90)/100;remaining=Math.max(0,total*dod)}
+   const totalBattery=Number($('batTotal')?.value)||((Number($('batKwh')?.value)||loadSizingResult?.batteryKwh||0)*(Number($('batQty')?.value)||1));
+   const dod=(Number($('billDod')?.value)||90)/100;
+   const chargeEff=Math.min(1,Math.max(.01,(Number($('billChargeEff')?.value)||95)/100));
+   const dischargeEff=Math.min(1,Math.max(.01,(Number($('billDischargeEff')?.value)||95)/100));
+   const usableCapacity=household?Math.max(0,totalBattery*dod):0;
+   const minSoc=1-dod;
+   const initialSoc=Math.min(1,Math.max(0,(Number($('billInitialSoc')?.value)||minSoc*100)/100));
+   let remaining=household?Math.min(usableCapacity,Math.max(0,totalBattery*(initialSoc-minSoc))):0;
    for(let i=0;i<intervals;i++){
     const le=load[i]*.5,pe=pvAt(i)*.5,used=Math.min(le,pe),surplus=Math.max(0,pe-le),deficit=Math.max(0,le-pe);
-    selfUse+=used;exportEnergy+=surplus;
+    selfUse+=used;
     if(i<22){daytimeLoad6to17+=le;daytimePv6to17+=pe;daytimeSelfUse6to17+=used;}
     let discharge=0;
-    if(household&&deficit>0&&remaining>0){discharge=Math.min(deficit,remaining);remaining-=discharge;batteryDischarge+=discharge;if(remaining<=1e-6&&batteryExhaustAt===null)batteryExhaustAt=startHour+(i+1)/2}
+    if(household&&surplus>0&&remaining<usableCapacity){
+     const stored=Math.min(usableCapacity-remaining,surplus*chargeEff);
+     const pvToBattery=stored/chargeEff;
+     remaining+=stored;
+     if(i<22)daytimeSelfUse6to17+=pvToBattery;
+     exportEnergy+=Math.max(0,surplus-pvToBattery);
+    }else if(!household){exportEnergy+=surplus;}
+    if(household&&deficit>0&&remaining>0){
+     const stored=Math.min(remaining,deficit/dischargeEff);
+     discharge=stored*dischargeEff;remaining-=stored;batteryDischarge+=discharge;
+     if(remaining<=1e-6&&batteryExhaustAt===null)batteryExhaustAt=startHour+(i+1)/2;
+    }
     batteryCurve[i]=discharge/.5;
     batteryFillRatio[i]=deficit>0?Math.min(1,discharge/deficit):0;
     gridImport+=Math.max(0,deficit-discharge);
@@ -2119,25 +2137,50 @@ def _ppt_load_profile_chart(payload):
     pv_energy=sum(solar[:-1])
     self_use=grid_import=export_energy=day_load=day_pv=day_self=0.0
     battery_curve=[0.0]*intervals; battery_ratio=[0.0]*intervals
-    remaining=max(0,float(payload.get("batKwh") or 0)*float(payload.get("batQty") or 1)*float(payload.get("billDod") or 90)/100) if household else 0
+    total_battery=float(payload.get("batKwh") or 0)*float(payload.get("batQty") or 1)
+    dod=min(1,max(0,float(payload.get("billDod") or 90)/100))
+    charge_eff=min(1,max(.01,float(payload.get("billChargeEff") or 95)/100))
+    discharge_eff=min(1,max(.01,float(payload.get("billDischargeEff") or 95)/100))
+    usable_capacity=total_battery*dod if household else 0
+    min_soc=1-dod
+    initial_raw=payload.get("billInitialSoc")
+    initial_soc=min(1,max(0,float(initial_raw if initial_raw is not None else min_soc*100)/100))
+    remaining=min(usable_capacity,max(0,total_battery*(initial_soc-min_soc))) if household else 0
     for i in range(intervals):
-        le=load[i]*.5; pe=pv_at(i)*.5; used=min(le,pe); deficit=max(0,le-pe)
-        self_use+=used; export_energy+=max(0,pe-le)
+        le=load[i]*.5; pe=pv_at(i)*.5; used=min(le,pe); surplus=max(0,pe-le); deficit=max(0,le-pe)
+        self_use+=used
         if i<22: day_load+=le; day_pv+=pe; day_self+=used
-        discharge=min(deficit,remaining) if household else 0
-        remaining-=discharge; battery_curve[i]=discharge/.5
+        if household and surplus>0 and remaining<usable_capacity:
+            stored=min(usable_capacity-remaining,surplus*charge_eff)
+            pv_to_battery=stored/charge_eff
+            remaining+=stored
+            if i<22: day_self+=pv_to_battery
+            export_energy+=max(0,surplus-pv_to_battery)
+        elif not household:
+            export_energy+=surplus
+        discharge=0.0
+        if household and deficit>0 and remaining>0:
+            stored=min(remaining,deficit/discharge_eff)
+            discharge=stored*discharge_eff
+            remaining-=stored
+        battery_curve[i]=discharge/.5
         battery_ratio[i]=discharge/deficit if deficit>0 else 0
         grid_import+=max(0,deficit-discharge)
     metrics={"energy":energy,"peak":peak,"average":average,"pv_energy":pv_energy,
              "pv_self_rate":day_self/day_pv*100 if day_pv else 0,
              "load_coverage":day_self/day_load*100 if day_load else 0,
              "self_use":self_use,"grid_import":grid_import,"export_energy":export_energy}
-    W,H=1600,760; im=Image.new("RGB",(W,H),"white"); d=ImageDraw.Draw(im)
+    W=1600
+    target_ratio=float(payload.get("_slide5ChartRatio") or (1600/760))
+    target_ratio=max(1.15,min(2.6,target_ratio))
+    H=max(700,int(W/target_ratio))
+    im=Image.new("RGB",(W,H),"white"); d=ImageDraw.Draw(im)
+    scale=H/760
     try:
-        lab=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",20)
-        small=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",17)
+        lab=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",max(18,int(20*scale)))
+        small=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",max(15,int(17*scale)))
     except Exception: lab=small=ImageFont.load_default()
-    L,R,T,B=95,35,55,85; pw,ph=W-L-R,H-T-B
+    L,R,T,B=int(95*scale),int(35*scale),int(55*scale),int(85*scale); pw,ph=W-L-R,H-T-B
     ymax=max(1,max(load),max(solar),max(battery_curve))*1.12
     def xy(i,v): return (int(L+pw*i/intervals),int(T+ph*(1-v/ymax)))
     for k in range(5):
@@ -2165,9 +2208,14 @@ def _ppt_load_profile_chart(payload):
 
 def _ppt_replace_picture(slide,shape,image_bytes):
     image_part,rid=slide.part.get_or_add_image_part(io.BytesIO(image_bytes))
-    blip=shape._element.blipFill.blip
+    blip_fill=shape._element.blipFill
+    blip=blip_fill.blip
     from pptx.oxml.ns import qn
     blip.set(qn("r:embed"),rid)
+    # Remove crop percentages inherited from the old template image.
+    src_rect=blip_fill.find(qn("a:srcRect"))
+    if src_rect is not None:
+        blip_fill.remove(src_rect)
 
 def _ppt_photo_collage(items, target_ratio):
     from PIL import Image, ImageOps, ImageDraw
@@ -2348,12 +2396,15 @@ async def create_presentation_report(pid:str,request:Request):
         from pptx.util import Inches
         import unicodedata
         slide5=prs.slides[4]
-        load_chart_bytes,load_chart_metrics=_ppt_load_profile_chart(p)
-        if load_chart_bytes:
-            picture_candidates=[sh for sh in slide5.shapes if sh.shape_type==MSO_SHAPE_TYPE.PICTURE and sh.width>Inches(3) and sh.height>Inches(1.5) and sh.width/max(sh.height,1)>1.25]
-            if picture_candidates:
-                chart_frame=max(picture_candidates,key=lambda sh:sh.width*sh.height)
-                _ppt_replace_picture(slide5,chart_frame,load_chart_bytes)
+        picture_candidates=[sh for sh in slide5.shapes if sh.shape_type==MSO_SHAPE_TYPE.PICTURE and sh.width>Inches(3) and sh.height>Inches(1.5) and sh.width/max(sh.height,1)>1.25]
+        if picture_candidates:
+            chart_frame=max(picture_candidates,key=lambda sh:sh.width*sh.height)
+            chart_payload=dict(p)
+            chart_payload["_slide5ChartRatio"]=chart_frame.width/max(chart_frame.height,1)
+            load_chart_bytes,load_chart_metrics=_ppt_load_profile_chart(chart_payload)
+            if load_chart_bytes: _ppt_replace_picture(slide5,chart_frame,load_chart_bytes)
+        else:
+            load_chart_metrics={}
         # Populate the existing right-hand chart summary table from project/chart data.
         slide5_table=next((sh.table for sh in slide5.shapes if sh.has_table),None)
         if slide5_table is not None and len(slide5_table.rows)>1:
