@@ -1333,18 +1333,22 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
             total=subtotal+vat
         return subtotal,vat,total
     subtotal,vat,total=parse_amount_block(normalized)
-    # Highest-confidence path: inspect each PDF page separately and only accept
-    # an arithmetic-consistent subtotal + VAT + grand-total triplet on a page
-    # that contains the quote summary labels. This prevents unrelated amounts
-    # elsewhere in the quotation from being mistaken for the investment total.
+    # Highest-confidence path: inspect each PDF page independently.
+    # Normalize labels locally; clean_label is scoped inside parse_amount_block.
+    def normalize_quote_label(value):
+        import unicodedata
+        value=value.replace("đ","d").replace("Đ","D")
+        value=unicodedata.normalize("NFD",value)
+        value="".join(ch for ch in value if unicodedata.category(ch)!="Mn")
+        return re.sub(r"[^a-z0-9]+"," ",value.lower()).strip()
     page_triplets=[]
     for page_index,page in enumerate(reader.pages):
         page_text=(page.extract_text() or "").replace("\u00a0"," ")
-        page_labels=clean_label(page_text)
+        page_labels=normalize_quote_label(page_text)
         if "tong tien" not in page_labels or "vat" not in page_labels:
             continue
-        page_tokens=re.findall(r"(?<!\d)(?:\d{1,3}(?:[,. ]\d{3})+|\d{6,})(?!\d)",page_text)
-        page_values=[int(re.sub(r"\D","",v)) for v in page_tokens]
+        page_tokens=re.findall(r"(?<!\\d)(?:\\d{1,3}(?:[,. ]\\d{3})+|\\d{6,})(?!\\d)",page_text)
+        page_values=[int(re.sub(r"\\D","",v)) for v in page_tokens]
         for token_index in range(max(0,len(page_values)-2)):
             sub,tax,grand=page_values[token_index:token_index+3]
             if sub>=100000 and tax>0 and grand>sub and abs(sub+tax-grand)<=max(2,grand*0.00001):
@@ -1352,7 +1356,6 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
                 if 0.01<=tax_rate<=0.20:
                     page_triplets.append((page_index,token_index,sub,tax,grand))
     if page_triplets:
-        # Prefer the final summary-page match, then the last matching triplet on it.
         _,_,subtotal,vat,total=page_triplets[-1]
     # Many supplier PDFs extract the right-aligned amount column before the row labels.
     # Recover the three summary amounts by arithmetic reconciliation across the document.
