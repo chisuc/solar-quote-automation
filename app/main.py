@@ -293,7 +293,7 @@ async function captureUrChartPng(){
 async function generatePresentationReport(){if(!pid){$('presentationStatus').textContent='Hãy lưu dự án trước khi xuất PowerPoint.';return}try{$('presentationStatus').textContent='Đang chụp đúng vùng biểu đồ UR...';const urChartPng=await captureUrChartPng();$('presentationStatus').textContent=urChartPng?'Đã chụp biểu đồ UR. Đang chèn vào slide...':'Không thấy biểu đồ UR đang hiển thị; sử dụng biểu đồ dự phòng từ dữ liệu.';let r=await api('/api/projects/'+pid+'/presentation-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:payload(),ur_chart_png:urChartPng})});$('presentationStatus').innerHTML='Đã xuất báo giá: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>'+(urChartPng?' · Đã chèn ảnh chụp trực tiếp biểu đồ UR':'');await listFiles()}catch(e){$('presentationStatus').textContent='Không xuất được PowerPoint: '+e.message}}
 
 
-function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.customer=o.projectName||'';o.contact='';o.loadSizingResult=loadSizingResult;o.loadProfileKw=loadProfileTimes.map((_,i)=>$('loadProfile'+i)?.value??'');o.touScheduleMode=$('touScheduleMode')?.value||'old';o.financialOverrides=financialOverrides;o.financialReportId=financialReportId;o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;o.gsaImages=gsaImages;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined&&$(k))$(k).value=o[k]});if(!o.projectName&&o.customer&&$('projectName'))$('projectName').value=o.customer;loadSizingResult=o.loadSizingResult||null;if(o.touScheduleMode&&$('touScheduleMode')){$('touScheduleMode').value=o.touScheduleMode;updateTouScheduleDescription()}if(Array.isArray(o.loadProfileKw)){o.loadProfileKw.forEach((v,i)=>{if(i<23&&$('loadProfile'+i))$('loadProfile'+i).value=v??''});if(o.loadProfileKw.length===23&&o.loadProfileKw.some(v=>v!==''&&v!==null&&v!==undefined)){try{drawLoadPvComparison()}catch(_){}}}if(loadSizingResult){$('billMonthKwh').value=loadSizingResult.monthlyKwh||'';$('billDays').value=loadSizingResult.billDays||30;$('billDayShare').value=loadSizingResult.dayShare||65;calcBillNightShare();calculateLoadSizing()}else{$('loadSizingResults').style.display='none'}financialOverrides=o.financialOverrides||{};financialReportId=o.financialReportId||null;showFinancialOverrides();pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;gsaImages=o.gsaImages||[];renderGSAImages();renderPV();calc()}
+function payload(){let o={};ids.forEach(k=>o[k]=$(k).value);o.customer=o.projectName||'';o.contact='';o.loadSizingResult=loadSizingResult;o.loadProfileKw=loadProfileTimes.map((_,i)=>$('loadProfile'+i)?.value??'');o.touScheduleMode=$('touScheduleMode')?.value||'old';o.financialOverrides=financialOverrides;o.financialReportId=financialReportId;o.pvwattsResult=pvwattsResult;o.globalSolarAtlasResult=globalSolarAtlasResult;o.gsaImages=gsaImages;o.customerCode=billCustomerCode;return o}function fill(o){ids.forEach(k=>{if(o[k]!==undefined&&$(k))$(k).value=o[k]});billCustomerCode=String(o.customerCode||'').trim();if(!o.projectName&&o.customer&&$('projectName'))$('projectName').value=o.customer;loadSizingResult=o.loadSizingResult||null;if(o.touScheduleMode&&$('touScheduleMode')){$('touScheduleMode').value=o.touScheduleMode;updateTouScheduleDescription()}if(Array.isArray(o.loadProfileKw)){o.loadProfileKw.forEach((v,i)=>{if(i<23&&$('loadProfile'+i))$('loadProfile'+i).value=v??''});if(o.loadProfileKw.length===23&&o.loadProfileKw.some(v=>v!==''&&v!==null&&v!==undefined)){try{drawLoadPvComparison()}catch(_){}}}if(loadSizingResult){$('billMonthKwh').value=loadSizingResult.monthlyKwh||'';$('billDays').value=loadSizingResult.billDays||30;$('billDayShare').value=loadSizingResult.dayShare||65;calcBillNightShare();calculateLoadSizing()}else{$('loadSizingResults').style.display='none'}financialOverrides=o.financialOverrides||{};financialReportId=o.financialReportId||null;showFinancialOverrides();pvwattsResult=o.pvwattsResult||null;globalSolarAtlasResult=o.globalSolarAtlasResult||null;gsaImages=o.gsaImages||[];renderGSAImages();renderPV();calc()}
 $('albedoMode').addEventListener('change',()=>{$('albedoField').style.display=$('albedoMode').value==='manual'?'block':'none'});
 let compassAngle=180,azimuthConfirmed=true;
 function normAngle(v){return ((v%360)+360)%360}
@@ -658,7 +658,7 @@ function applyLoadSizing(){
   calc();$('loadSizingStatus').textContent='Đã áp dụng điện năng tháng, số lượng tấm PV dự kiến và dung lượng pin vào cấu hình. Hãy kiểm tra và lưu dự án.';
  }catch(e){$('loadSizingStatus').textContent=e.message}
 }
-let billBatchResults=[];
+let billBatchResults=[],billCustomerCode='';
 function billFmt(v,options={}){return v===null||v===undefined||v===''?'—':Number(v).toLocaleString('vi-VN',{maximumFractionDigits:2,...options})}
 function billPeriodKey(x){return x.period_start&&x.period_end?x.period_start+'|'+x.period_end:null}
 function billGroupKey(x){return [x.customer_type||'Chưa xác định',x.voltage||'Chưa xác định cấp áp',x.tariff_type||'Chưa xác định hình thức giá'].join(' | ')}
@@ -824,7 +824,7 @@ async function readBills(){
  const files=[...$('billFiles').files];
  if(!files.length){$('billReadStatus').textContent='Chọn ít nhất một hóa đơn trước.';return}
  if(files.length>50){$('billReadStatus').textContent='Mỗi lần tải tối đa 50 file.';return}
- billBatchResults=[];const progress=$('billReadProgress');
+ billBatchResults=[];billCustomerCode='';const progress=$('billReadProgress');
  const escHtml=s=>String(s||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
  const renderProgress=(done,current,status)=>{
   const ok=billBatchResults.filter(x=>x.monthly_kwh&&!x.error).length,failed=billBatchResults.filter(x=>x.error).length;
@@ -854,6 +854,10 @@ async function readBills(){
    }catch(e){billBatchResults.push({filename:file.name,error:e.message,monthly_kwh:null})}
    renderBillBatch();calcBillNightShare();renderProgress(i+1,files[i+1]?.name,i+1===files.length?'Đã hoàn tất đọc hóa đơn.':'Đã xong '+(i+1)+'/'+files.length+' file.');
   }
+  const billCodes=[...new Set(billBatchResults.map(x=>String(x.customer_code||'').trim()).filter(Boolean))];
+  billCustomerCode=billCodes.length===1?billCodes[0]:'';
+  if(billCodes.length>1)$('billReadStatus').textContent+=' Có nhiều mã khách hàng khác nhau trong các hóa đơn; không tự điền mã để tránh nhầm lẫn.';
+  else if(billCustomerCode)$('billReadStatus').textContent+=' · Mã khách hàng: '+billCustomerCode;
  }catch(e){
   $('billReadStatus').textContent='Không khởi động được OCR trên Chrome: '+e.message;
   progress.innerHTML='<span style="color:#b42318">'+escHtml(e.message)+'</span>';return;
@@ -878,7 +882,7 @@ async function delFolder(id){if(!confirm('Xóa thư mục và toàn bộ dự á
 function esc(s){return String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 async function openP(id){let x=await api('/api/projects/'+id);pid=id;fill(x.payload);$('folderView').style.display='none';$('dashboardView').style.display='none';$('editorView').style.display='block';$('currentFolderTitle').textContent='📁 '+currentFolderName;$('currentFolderDate').textContent=currentFolderDate;let files=await listFiles();gsaImages=files.filter(v=>String(v.name||'').startsWith('global-solar-atlas-')).sort((a,b)=>a.name.localeCompare(b.name)).map(v=>({id:v.id,name:v.name}));renderGSAImages()}
 async function delP(id){if(confirm('Xóa dự án?')){await api('/api/projects/'+id,{method:'DELETE'});if(pid===id)fresh();list()}}
-function fresh(){pid=null;loadSizingResult=null;clearLoadProfile();$('billFiles').value='';billBatchResults=[];$('billBatchSummary').textContent='Chưa có dữ liệu hóa đơn.';$('billGroupSummary').innerHTML='';$('billGroupSelect').innerHTML='<option value="">Chọn nhóm hóa đơn</option>';$('billBatchTable').style.display='none';$('billMonthKwh').value='';$('billDays').value=30;$('billDayShare').value=65;calcBillNightShare();$('loadSizingResults').style.display='none';$('billReadStatus').textContent='';$('loadSizingStatus').textContent='Chưa tính toán.';financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='';ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('date').value=new Date().toISOString().slice(0,10);$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;pvwattsResult=null;globalSolarAtlasResult=null;gsaImages=[];renderGSAImages();calc()}
+function fresh(){pid=null;loadSizingResult=null;clearLoadProfile();$('billFiles').value='';billBatchResults=[];billCustomerCode='';$('billBatchSummary').textContent='Chưa có dữ liệu hóa đơn.';$('billGroupSummary').innerHTML='';$('billGroupSelect').innerHTML='<option value="">Chọn nhóm hóa đơn</option>';$('billBatchTable').style.display='none';$('billMonthKwh').value='';$('billDays').value=30;$('billDayShare').value=65;calcBillNightShare();$('loadSizingResults').style.display='none';$('billReadStatus').textContent='';$('loadSizingStatus').textContent='Chưa tính toán.';financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='';ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('date').value=new Date().toISOString().slice(0,10);$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;pvwattsResult=null;globalSolarAtlasResult=null;gsaImages=[];renderGSAImages();calc()}
 async function upload(){if(!pid){alert('Hãy lưu dự án trước');return}let fd=new FormData();for(let f of $('files').files)fd.append('files',f);let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});if(!r.ok){alert('Tải file lỗi');return}$('files').value='';listFiles()}
 async function uploadProjectImages(category){if(!pid){alert('Hãy lưu dự án trước khi tải ảnh.');return}let input=category==='roof-real'?$ ('roofRealImages'):$('roofPvImages');let files=[...input.files];if(!files.length){alert('Vui lòng chọn ảnh trước.');return}let fd=new FormData();for(let f of files)fd.append('files',f);fd.append('category',category);try{let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Tải ảnh không thành công');input.value='';await listFiles();$('status').textContent='Đã tải '+d.length+' ảnh lên dự án.'}catch(e){alert(e.message)}}
 async function deleteProjectImage(fid){if(!pid||!fid)return;if(!confirm('Bạn có chắc muốn xóa ảnh này khỏi dự án?'))return;try{const r=await fetch('/api/projects/'+pid+'/files/'+encodeURIComponent(fid),{method:'DELETE'});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không xóa được ảnh');await listFiles();$('status').textContent='Đã xóa ảnh khỏi dự án.'}catch(e){alert(e.message)}}
@@ -1068,6 +1072,20 @@ def _bill_number(raw):
 def _bill_extract_values(text):
     normalized=re.sub(r"\s+"," ",text or "").strip()
     lines=[re.sub(r"\s+"," ",x).strip() for x in (text or "").splitlines() if x.strip()]
+    # Extract a customer code only when it follows an explicit customer-code label.
+    # If OCR does not expose a labeled code, leave it blank rather than guessing.
+    customer_code=None
+    for idx,line in enumerate(lines):
+        plain=_bill_plain(line)
+        m=re.search(r"(?:ma\s*(?:khach\s*hang|kh)\s*[:#\-]?\s*)([a-z0-9][a-z0-9\-]{4,24})\b",plain,re.I)
+        if m:
+            customer_code=m.group(1).upper()
+            break
+        if re.search(r"^ma\s*(?:khach\s*hang|kh)\s*[:#\-]?$",plain,re.I) and idx+1<len(lines):
+            candidate=re.sub(r"[^A-Za-z0-9-]","",lines[idx+1]).upper()
+            if re.fullmatch(r"[A-Z0-9][A-Z0-9-]{4,24}",candidate):
+                customer_code=candidate
+                break
     # Read each OCR line independently. Flattening the whole page can make
     # a regex jump from a TOU label into the unrelated payment table below.
     import unicodedata
@@ -1241,7 +1259,7 @@ def _bill_extract_values(text):
                 tiers["bac_"+tm.group(1)]={"kwh":qty,"unit_price":rate,"amount_vnd":money}
     tariff="Ba giá" if len(tou)==3 else ("Bậc thang" if customer_type=="Sinh hoạt" else ("Theo bậc thang" if tiers else ("Một giá / tổng hợp" if kwh is not None else "Chưa xác định")) )
     return {"monthly_kwh":kwh,"period_days":period_days,"period":period,"period_start":start_iso,"period_end":end_iso,
-            "tou_kwh":tou,"tiers":tiers,"customer_type":customer_type,"voltage":voltage,"amount_vnd":amount,
+            "customer_code":customer_code,"tou_kwh":tou,"tiers":tiers,"customer_type":customer_type,"voltage":voltage,"amount_vnd":amount,
             "average_price_vnd_kwh":(amount/kwh if amount and kwh else None),"tariff_type":tariff,
             "raw_text":"\n".join(lines)[:7000]}
 @app.post("/api/bill/read")
@@ -2462,10 +2480,10 @@ async def create_presentation_report(pid:str,request:Request):
                 label=re.sub(r"[^a-z0-9]+"," ",unicodedata.normalize("NFKD",raw_label).encode("ascii","ignore").decode()).strip()
                 value=None
                 if "du an" in label: value=project
-                elif "ma so khach hang" in label: value=val("customerCode",val("customerId",""))
+                elif "ma so khach hang" in label: value=val("customerCode","")
                 elif "cong suat he thong" in label: value=fmt(pv,2)
                 elif "ti le tu tieu thu" in label: value=fmt(load_chart_metrics.get("pv_self_rate",0),1)+"%" if load_chart_metrics else fmt(self_use,1)+"%"
-                elif "tong ti le tieu thu" in label: value=fmt(self_use,1)+"%"
+                elif "tong ti le tieu thu" in label: value="100%"
                 if value is not None: _ppt_set_cell_text(row.cells[-1],value)
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của\nhệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
