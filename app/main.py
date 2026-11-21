@@ -2098,6 +2098,71 @@ def _ppt_monthly_production_chart(workbook_bytes):
     im.save(out,format="PNG",optimize=True)
     return out.getvalue()
 
+
+def _ppt_load_profile_chart(payload):
+    """Render the saved website load-vs-PV chart for slide 5 and return its metrics."""
+    from PIL import Image, ImageDraw, ImageFont
+    import math
+    profile=payload.get("loadProfileKw") or []
+    hourly=((payload.get("pvwattsResult") or {}).get("hourly_average_kw") or [])
+    if len(profile)<2 or len(hourly)!=24: return None, {}
+    household=len(profile)>=29
+    start_hour,end_hour=6,(20 if household else 17)
+    intervals=(end_hour-start_hour)*2
+    if len(profile)<intervals+1: return None, {}
+    load=[float(v or 0) for v in profile[:intervals+1]]
+    solar=[float(v or 0) for v in hourly[start_hour:end_hour+1]]
+    def pv_at(i):
+        h=start_hour+(i+.5)/2; lo=int(math.floor(h)); hi=min(23,lo+1); f=h-lo
+        return float(hourly[lo] or 0)*(1-f)+float(hourly[hi] or 0)*f
+    energy=sum(v*.5 for v in load[:intervals]); peak=max(load); average=energy/(end_hour-start_hour)
+    pv_energy=sum(solar[:-1])
+    self_use=grid_import=export_energy=day_load=day_pv=day_self=0.0
+    battery_curve=[0.0]*intervals; battery_ratio=[0.0]*intervals
+    remaining=max(0,float(payload.get("batKwh") or 0)*float(payload.get("batQty") or 1)*float(payload.get("billDod") or 90)/100) if household else 0
+    for i in range(intervals):
+        le=load[i]*.5; pe=pv_at(i)*.5; used=min(le,pe); deficit=max(0,le-pe)
+        self_use+=used; export_energy+=max(0,pe-le)
+        if i<22: day_load+=le; day_pv+=pe; day_self+=used
+        discharge=min(deficit,remaining) if household else 0
+        remaining-=discharge; battery_curve[i]=discharge/.5
+        battery_ratio[i]=discharge/deficit if deficit>0 else 0
+        grid_import+=max(0,deficit-discharge)
+    metrics={"energy":energy,"peak":peak,"average":average,"pv_energy":pv_energy,
+             "pv_self_rate":day_self/day_pv*100 if day_pv else 0,
+             "load_coverage":day_self/day_load*100 if day_load else 0,
+             "self_use":self_use,"grid_import":grid_import,"export_energy":export_energy}
+    W,H=1600,760; im=Image.new("RGB",(W,H),"white"); d=ImageDraw.Draw(im)
+    try:
+        lab=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",20)
+        small=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",17)
+    except Exception: lab=small=ImageFont.load_default()
+    L,R,T,B=95,35,55,85; pw,ph=W-L-R,H-T-B
+    ymax=max(1,max(load),max(solar),max(battery_curve))*1.12
+    def xy(i,v): return (int(L+pw*i/intervals),int(T+ph*(1-v/ymax)))
+    for k in range(5):
+        yy=int(T+ph*(1-k/4)); d.line((L,yy,W-R,yy),fill=(225,235,230),width=2)
+        d.text((L-14,yy-12),f"{ymax*k/4:.1f}",font=small,fill=(90,110,101),anchor="rm")
+    d.text((18,18),"kW",font=lab,fill=(80,100,92))
+    solar_pts=[xy(i*2,v) for i,v in enumerate(solar)]
+    d.polygon(solar_pts+[(solar_pts[-1][0],T+ph),(solar_pts[0][0],T+ph)],fill=(202,232,218))
+    for i in range(intervals):
+        if battery_ratio[i]<=.001: continue
+        p0=float(hourly[start_hour+i//2] or 0); p1=float(hourly[min(end_hour,start_hour+(i+1)//2)] or 0)
+        top0=p0+max(0,load[i]-p0)*battery_ratio[i]; top1=p1+max(0,load[i]-p1)*battery_ratio[i]
+        d.polygon([xy(i,top0),xy(i+1,top1),xy(i+1,p1),xy(i,p0)],fill=(194,218,242))
+    d.line(solar_pts,fill=(20,137,83),width=5,joint="curve")
+    d.line([xy(i,v) for i,v in enumerate(load)],fill=(230,55,55),width=5,joint="curve")
+    for h in range(start_hour,end_hour+1):
+        d.text((int(L+pw*(h-start_hour)/(end_hour-start_hour)),H-48),f"{h:02d}:00",font=small,fill=(65,85,77),anchor="mm")
+    y=H-14
+    d.line((L,y,L+35,y),fill=(230,55,55),width=5); d.text((L+45,y-12),"Phụ tải (kW)",font=small,fill=(80,80,80))
+    d.line((L+230,y,L+265,y),fill=(20,137,83),width=5); d.text((L+275,y-12),"Solar (kW)",font=small,fill=(80,80,80))
+    if household:
+        d.rectangle((L+445,y-9,L+480,y+9),fill=(194,218,242)); d.text((L+490,y-12),"Miền công suất xả pin (kW)",font=small,fill=(80,80,80))
+    out=io.BytesIO(); im.save(out,format="PNG",optimize=True)
+    return out.getvalue(),metrics
+
 def _ppt_replace_picture(slide,shape,image_bytes):
     image_part,rid=slide.part.get_or_add_image_part(io.BytesIO(image_bytes))
     blip=shape._element.blipFill.blip
@@ -2265,7 +2330,7 @@ async def create_presentation_report(pid:str,request:Request):
             for para in sh.text_frame.paragraphs:
                 if "Hóa đơn" in para.text or "hóa đơn" in para.text:
                     _ppt_set_paragraph_label_value(
-                        para,"✓ Hóa đơn ",f"{monthly_bill_million} triệu/tháng."
+                        para,"Hóa đơn ",f"{monthly_bill_million} triệu/tháng."
                     )
                     # Emphasize the monthly bill amount and unit in bold.
                     if para.runs:
@@ -2278,6 +2343,29 @@ async def create_presentation_report(pid:str,request:Request):
             raise ValueError("Không tìm thấy dòng 'Hóa đơn' trên slide 3 của form PowerPoint.")
         # Slide 5 must show monthly electricity consumption (kWh), not the bill amount.
         text_shape(prs.slides[4],14,f"Số điện:\n~{fmt(monthly_load,0)} kWh/tháng")
+
+        # Replace the old generic chart on slide 5 with the saved website load/PV chart.
+        slide5=prs.slides[4]
+        load_chart_bytes,load_chart_metrics=_ppt_load_profile_chart(p)
+        if load_chart_bytes:
+            picture_candidates=[sh for sh in slide5.shapes if sh.shape_type==MSO_SHAPE_TYPE.PICTURE and sh.width>Inches(3) and sh.height>Inches(1.5) and sh.width/max(sh.height,1)>1.25]
+            if picture_candidates:
+                chart_frame=max(picture_candidates,key=lambda sh:sh.width*sh.height)
+                _ppt_replace_picture(slide5,chart_frame,load_chart_bytes)
+        # Populate the existing right-hand chart summary table from project/chart data.
+        slide5_table=next((sh.table for sh in slide5.shapes if sh.has_table),None)
+        if slide5_table is not None and len(slide5_table.rows)>1:
+            for rr in range(1,len(slide5_table.rows)):
+                row=slide5_table.rows[rr]
+                raw_label=row.cells[0].text.lower()
+                label=re.sub(r"[^a-z0-9]+"," ",unicodedata.normalize("NFKD",raw_label).encode("ascii","ignore").decode()).strip()
+                value=None
+                if "du an" in label: value=project
+                elif "ma so khach hang" in label: value=val("customerCode",val("customerId",""))
+                elif "cong suat he thong" in label: value=fmt(pv,2)
+                elif "ti le tu tieu thu" in label: value=fmt(load_chart_metrics.get("pv_self_rate",0),1)+"%" if load_chart_metrics else fmt(self_use,1)+"%"
+                elif "tong ti le tieu thu" in label: value=fmt(self_use,1)+"%"
+                if value is not None: _ppt_set_cell_text(row.cells[-1],value)
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của\nhệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
         # Slides 7 onward are intentionally kept unchanged for this phase.
@@ -2368,7 +2456,7 @@ async def create_presentation_report(pid:str,request:Request):
             "irr":irr_text,
             "npv":npv_text,
             # Use the exact same 30-year accumulated savings figure shown on slide 3.
-            "dong tien thuan luy ke":savings_text+" tỷ đồng"
+            "dong tien thuan luy ke":savings_text+" tỷ VNĐ"
         }
         summary_table=next((sh.table for sh in slide10.shapes if sh.has_table),None)
         if summary_table is None:
