@@ -806,7 +806,7 @@ function backToFolder(){if(pid&&!confirm('Bạn đã lưu các thay đổi chưa
 function backToFolders(){if(!confirm('Quay lại danh sách tất cả thư mục?'))return;$('folderView').style.display='none';$('editorView').style.display='none';$('dashboardView').style.display='block';currentFolderId=null;pid=null;renderFolders()}
 async function delFolder(id){if(!confirm('Xóa thư mục và toàn bộ dự án, file bên trong? Thao tác này không thể hoàn tác.'))return;try{await api('/api/folders/'+id,{method:'DELETE'});await renderFolders()}catch(e){$('folderStatus').textContent=e.message}}
 function esc(s){return String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
-async function openP(id){let x=await api('/api/projects/'+id);pid=id;currentFolderId=x.payload.folderId||currentFolderId;fill(x.payload);$('folderView').style.display='none';$('dashboardView').style.display='none';$('editorView').style.display='block';$('currentFolderTitle').textContent='📁 '+currentFolderName;$('currentFolderDate').textContent=currentFolderDate;let files=await listFiles();gsaImages=files.filter(v=>String(v.name||'').startsWith('global-solar-atlas-')).sort((a,b)=>a.name.localeCompare(b.name)).map(v=>({id:v.id,name:v.name}));renderGSAImages()}
+async function openP(id){let x=await api('/api/projects/'+id);pid=id;fill(x.payload);$('folderView').style.display='none';$('dashboardView').style.display='none';$('editorView').style.display='block';$('currentFolderTitle').textContent='📁 '+currentFolderName;$('currentFolderDate').textContent=currentFolderDate;let files=await listFiles();gsaImages=files.filter(v=>String(v.name||'').startsWith('global-solar-atlas-')).sort((a,b)=>a.name.localeCompare(b.name)).map(v=>({id:v.id,name:v.name}));renderGSAImages()}
 async function delP(id){if(confirm('Xóa dự án?')){await api('/api/projects/'+id,{method:'DELETE'});if(pid===id)fresh();list()}}
 function fresh(){pid=null;loadSizingResult=null;clearLoadProfile();$('billFiles').value='';billBatchResults=[];$('billBatchSummary').textContent='Chưa có dữ liệu hóa đơn.';$('billGroupSummary').innerHTML='';$('billGroupSelect').innerHTML='<option value="">Chọn nhóm hóa đơn</option>';$('billBatchTable').style.display='none';$('billMonthKwh').value='';$('billDays').value=30;$('billDayShare').value=65;calcBillNightShare();$('loadSizingResults').style.display='none';$('billReadStatus').textContent='';$('loadSizingStatus').textContent='Chưa tính toán.';financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='';ids.forEach(k=>$(k).value=$(k).defaultValue||'');$('date').value=new Date().toISOString().slice(0,10);$('panelW').value=625;$('panelQty').value=30;$('batQty').value=0;$('vat').value=8;pvwattsResult=null;globalSolarAtlasResult=null;gsaImages=[];renderGSAImages();calc()}
 async function upload(){if(!pid){alert('Hãy lưu dự án trước');return}let fd=new FormData();for(let f of $('files').files)fd.append('files',f);let r=await fetch('/api/projects/'+pid+'/files',{method:'POST',body:fd});if(!r.ok){alert('Tải file lỗi');return}$('files').value='';listFiles()}
@@ -2285,28 +2285,24 @@ async def capture_global_solar_atlas(pid:str,request:Request):
         print(f"Global Solar Atlas capture error: {type(exc).__name__}: {exc}",flush=True)
         raise HTTPException(502,f"Global Solar Atlas capture failed: {type(exc).__name__}: {str(exc)[:350]}")
     
+LEGACY_FOLDER_ID="legacy-unassigned"
+
 @app.get("/api/folders")
 def folders(request:Request):
     auth(request)
     rows=sb_request("GET",db("projects"),params={"select":"id,name,payload,updated","order":"updated.desc"}).json()
-    # One-time compatibility migration: older projects created before folder
-    # management have no folderId and were hidden by the folder-only dashboard.
-    folders=[r for r in rows if (r.get("payload") or {}).get("_recordType")=="folder"]
-    folder_ids={r.get("id") for r in folders}
-    legacy=[r for r in rows if (r.get("payload") or {}).get("_recordType")!="folder" and (r.get("payload") or {}).get("folderId") not in folder_ids]
+    actual=[r for r in rows if (r.get("payload") or {}).get("_recordType")=="folder"]
+    folder_ids={r.get("id") for r in actual}
+    # Show older projects that predate folder management, or whose parent folder
+    # no longer exists, in a virtual recovery folder. Do not rewrite/delete records
+    # while rendering the dashboard.
+    legacy=[r for r in rows if (r.get("payload") or {}).get("_recordType")!="folder"
+            and (r.get("payload") or {}).get("folderId") not in folder_ids]
+    result=[{"id":r["id"],"name":(r.get("payload") or {}).get("folderName") or r.get("name") or "Thư mục",
+             "date":(r.get("payload") or {}).get("folderDate",""),"updated":r.get("updated")} for r in actual]
     if legacy:
-        legacy_id="00000000-0000-4000-8000-000000000001"
-        existing=next((r for r in folders if r.get("id")==legacy_id),None)
-        if not existing:
-            payload={"_recordType":"folder","folderName":"Dự án cũ (được khôi phục hiển thị)","folderDate":""}
-            sb_request("POST",db("projects"),json={"id":legacy_id,"name":payload["folderName"],"customer":"","payload":payload,"updated":datetime.now(timezone.utc).isoformat()},headers={"Prefer":"return=minimal"})
-            existing={"id":legacy_id,"name":payload["folderName"],"payload":payload,"updated":datetime.now(timezone.utc).isoformat()}
-            folders.append(existing)
-        for project in legacy:
-            payload=dict(project.get("payload") or {})
-            payload["folderId"]=legacy_id
-            sb_request("PATCH",db("projects"),params={"id":f"eq.{project['id']}"},json={"payload":payload},headers={"Prefer":"return=minimal"})
-    return [{"id":r["id"],"name":(r.get("payload") or {}).get("folderName") or r.get("name") or "Thư mục","date":(r.get("payload") or {}).get("folderDate",""),"updated":r.get("updated")} for r in folders]
+        result.append({"id":LEGACY_FOLDER_ID,"name":"Dự án cũ (khôi phục)","date":"","updated":None})
+    return result
 
 @app.post("/api/folders")
 async def create_folder(request:Request):
@@ -2324,7 +2320,14 @@ async def create_folder(request:Request):
 def folder_projects(fid:str,request:Request):
     auth(request)
     rows=sb_request("GET",db("projects"),params={"select":"id,name,customer,updated,payload","order":"updated.desc"}).json()
-    return [{"id":r["id"],"name":r.get("name"),"customer":r.get("customer"),"updated":r.get("updated")} for r in rows if (r.get("payload") or {}).get("folderId")==fid and (r.get("payload") or {}).get("_recordType")!="folder"]
+    if fid==LEGACY_FOLDER_ID:
+        valid_folder_ids={r.get("id") for r in rows if (r.get("payload") or {}).get("_recordType")=="folder"}
+        selected=[r for r in rows if (r.get("payload") or {}).get("_recordType")!="folder"
+                  and (r.get("payload") or {}).get("folderId") not in valid_folder_ids]
+    else:
+        selected=[r for r in rows if (r.get("payload") or {}).get("folderId")==fid
+                  and (r.get("payload") or {}).get("_recordType")!="folder"]
+    return [{"id":r["id"],"name":r.get("name"),"customer":r.get("customer"),"updated":r.get("updated")} for r in selected]
 
 @app.delete("/api/folders/{fid}")
 def delete_folder(fid:str,request:Request):
@@ -2350,8 +2353,10 @@ async def create(request:Request):
     auth(request); p=await request.json()
     folder_id=p.get("folderId")
     if not folder_id: raise HTTPException(400,"Vui lòng mở thư mục trước khi tạo dự án.")
-    frows=sb_request("GET",db("projects"),params={"id":f"eq.{folder_id}","select":"id,payload"}).json()
-    if not frows or (frows[0].get("payload") or {}).get("_recordType")!="folder": raise HTTPException(404,"Không tìm thấy thư mục.")
+    if folder_id!=LEGACY_FOLDER_ID:
+        frows=sb_request("GET",db("projects"),params={"id":f"eq.{folder_id}","select":"id,payload"}).json()
+        if not frows or (frows[0].get("payload") or {}).get("_recordType")!="folder":
+            raise HTTPException(404,"Không tìm thấy thư mục. Hãy tải lại danh sách thư mục.")
     pid=str(uuid.uuid4()); now=datetime.now(timezone.utc).isoformat()
     name=p.get("projectName") or p.get("customer") or "Dự án mới"
     row={"id":pid,"name":name,"customer":p.get("customer",""),"payload":p,"updated":now}
