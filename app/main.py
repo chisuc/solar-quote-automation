@@ -2482,7 +2482,7 @@ async def create_presentation_report(pid:str,request:Request):
                 if "du an" in label: value=project
                 elif "ma so khach hang" in label: value=val("customerCode","")
                 elif "cong suat he thong" in label: value=fmt(pv,2)
-                elif "ti le tu tieu thu" in label: value=fmt(load_chart_metrics.get("pv_self_rate",0),1)+"%" if load_chart_metrics else fmt(self_use,1)+"%"
+                elif "ti le tu tieu thu" in label: value=fmt(load_chart_metrics["pv_self_rate"],1)+"%" if "pv_self_rate" in load_chart_metrics else ""
                 elif "tong ti le tieu thu" in label: value="100%"
                 if value is not None: _ppt_set_cell_text(row.cells[-1],value)
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
