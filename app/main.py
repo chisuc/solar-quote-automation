@@ -572,7 +572,7 @@ function drawLoadPvComparison(){
   // This makes battery discharge begin at the actual PV/load crossover, not at the next whole hour.
   const pvAt=i=>{if(!hasPv)return 0;const h=startHour+(i+.5)/2,lo=Math.floor(h),hi=Math.min(23,lo+1),f=h-lo;return Number(hourly[lo]||0)*(1-f)+Number(hourly[hi]||0)*f};
   const pvEnergy=hasPv?hourly.slice(startHour,endHour).reduce((sum,v)=>sum+Number(v||0),0):0;
-  let selfUse=0,gridImport=0,exportEnergy=0,batteryDischarge=0,batteryExhaustAt=null,daytimeLoad6to17=0,daytimePv6to17=0,daytimeSelfUse6to17=0;
+  let selfUse=0,gridImport=0,exportEnergy=0,batteryDischarge=0,batteryExhaustAt=null,daytimeLoad6to17=0,daytimePv6to17=0,daytimeDirectPvToLoad6to17=0,daytimePvToBattery6to17=0;
   const batteryCurve=Array(intervals).fill(0),batteryFillRatio=Array(intervals).fill(0);
   if(hasPv){
    const totalBattery=Number($('batTotal')?.value)||((Number($('batKwh')?.value)||loadSizingResult?.batteryKwh||0)*(Number($('batQty')?.value)||1));
@@ -587,13 +587,13 @@ function drawLoadPvComparison(){
    for(let i=0;i<intervals;i++){
     const le=load[i]*.5,pe=pvAt(i)*.5,used=Math.min(le,pe),surplus=Math.max(0,pe-le),deficit=Math.max(0,le-pe);
     selfUse+=used;
-    if(i<22){daytimeLoad6to17+=le;daytimePv6to17+=pe;daytimeSelfUse6to17+=used;}
+    if(i<22){daytimeLoad6to17+=le;daytimePv6to17+=pe;daytimeDirectPvToLoad6to17+=used;}
     let discharge=0;
     if(household&&surplus>0&&remaining<usableCapacity){
      const stored=Math.min(usableCapacity-remaining,surplus*chargeEff);
      const pvToBattery=stored/chargeEff;
      remaining+=stored;
-     if(i<22)daytimeSelfUse6to17+=pvToBattery;
+     if(i<22)daytimePvToBattery6to17+=pvToBattery;
      exportEnergy+=Math.max(0,surplus-pvToBattery);
     }else if(!household){exportEnergy+=surplus;}
     if(household&&deficit>0&&remaining>0){
@@ -640,7 +640,7 @@ function drawLoadPvComparison(){
   $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ PV, phụ tải và công suất xả pin từ 6 giờ đến '+endHour+' giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+(household&&hasPv?'<path d="'+batteryPath+'" fill="#2878d0" fill-opacity=".30" stroke="none"/>':'')+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div>'+(unit==='%'?'<h3 style="margin:7px 0;color:#16845b;white-space:nowrap">'+value.toFixed(1)+'<span style="font-size:.78em;margin-left:3px">%</span></h3>':'<h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div>')+'</div>';
   let metrics=card('Điện năng phụ tải '+startHour+'–'+endHour,energy,'kWh/ngày')+card('Công suất phụ tải lớn nhất',peak,'kW')+card('Công suất phụ tải trung bình '+startHour+'–'+endHour,average,'kW');
-  if(hasPv){const loadCoverage=daytimeLoad6to17>0?daytimeSelfUse6to17/daytimeLoad6to17*100:0,pvSelfRate=daytimePv6to17>0?daytimeSelfUse6to17/daytimePv6to17*100:0;metrics+=card('PV trung bình '+startHour+'–'+endHour,pvEnergy,'kWh/ngày')+card('PV tự tiêu thụ',selfUse,'kWh/ngày')+card('Điện lưới cần bổ sung',gridImport,'kWh/ngày')+card('PV dư / có thể sạc vào pin lưu trữ',exportEnergy,'kWh/ngày')+card('Tỷ lệ phụ tải được PV đáp ứng (06–17)',loadCoverage,'%')+card('Tỷ lệ PV được tự tiêu thụ (06–17)',pvSelfRate,'%');if(household)metrics+=(batteryExhaustAt!==null?'<div class="gsa-card"><div class="muted">Pin cạn theo mô hình</div><h3 style="margin:7px 0;color:#2878d0">'+batteryExhaustAt.toFixed(1).replace('.',':')+' h</h3><div class="muted">Sau thời điểm này lưới cấp phần thiếu</div></div>':'<div class="gsa-card"><div class="muted">Trạng thái pin lúc 20:00</div><h3 style="margin:7px 0;color:#2878d0">Còn năng lượng</h3><div class="muted">Pin có thể tiếp tục xả sau 20:00</div></div>')}
+  if(hasPv){const loadCoverage=daytimeLoad6to17>0?daytimeDirectPvToLoad6to17/daytimeLoad6to17*100:0,pvSelfConsumed6to17=daytimeDirectPvToLoad6to17+daytimePvToBattery6to17,pvSelfRate=daytimePv6to17>0?pvSelfConsumed6to17/daytimePv6to17*100:0;const exhaustMinutes=batteryExhaustAt===null?0:Math.round(batteryExhaustAt*60),exhaustTime=String(Math.floor(exhaustMinutes/60)).padStart(2,'0')+':'+String(exhaustMinutes%60).padStart(2,'0');metrics+=card('Điện năng PV '+startHour+'–'+endHour,pvEnergy,'kWh/ngày')+card('PV cấp trực tiếp cho tải (06–20)',selfUse,'kWh/ngày')+card('Điện lưới cần bổ sung',gridImport,'kWh/ngày')+card('PV dư sau khi nạp pin',exportEnergy,'kWh/ngày')+card('Tỷ lệ phụ tải được PV trực tiếp đáp ứng (06–17)',loadCoverage,'%')+card('Tỷ lệ PV tự tiêu thụ / nạp pin (06–17)',pvSelfRate,'%');if(household)metrics+=(batteryExhaustAt!==null?'<div class="gsa-card"><div class="muted">Pin cạn theo mô hình</div><h3 style="margin:7px 0;color:#2878d0">'+exhaustTime+' h</h3><div class="muted">Sau thời điểm này lưới cấp phần thiếu</div></div>':'<div class="gsa-card"><div class="muted">Trạng thái pin lúc 20:00</div><h3 style="margin:7px 0;color:#2878d0">Còn năng lượng</h3><div class="muted">Pin có thể tiếp tục xả sau 20:00</div></div>')}
   $('loadPvMetrics').innerHTML=metrics;
   if($('batteryLegend'))$('batteryLegend').style.display=household&&hasPv?'inline':'none';
   $('loadPvNote').textContent=hasPv?(household?'Miền xanh: PV; đường đỏ: phụ tải hộ dân; đường xanh dương: công suất xả pin. Pin chỉ bắt đầu xả khi PV thấp hơn tải. Mô hình giới hạn năng lượng xả theo tổng dung lượng pin × DoD; nếu pin cạn trước 20:00, đường xả về 0 và điện lưới bù phần thiếu. Nếu còn pin lúc 20:00, biểu đồ dừng tại 20:00 nhưng pin được hiểu là tiếp tục xả sau thời điểm này.':'Miền xanh: PV; đường đỏ: phụ tải nhà máy. Dữ liệu PV lấy trung bình 8.760 giờ của năm khí tượng điển hình.'):'Chưa có dữ liệu PVWatts hourly. Hãy chạy PVWatts để hiển thị đường sản lượng PV.';
