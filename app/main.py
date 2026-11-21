@@ -2274,7 +2274,7 @@ async def create_presentation_report(pid:str,request:Request):
         if not bill_line_updated:
             raise ValueError("Không tìm thấy dòng 'Hóa đơn' trên slide 3 của form PowerPoint.")
         # Slide 5 must show monthly electricity consumption (kWh), not the bill amount.
-        text_shape(prs.slides[4],14,f"Số điện:\\n~{fmt(monthly_load,0)} kWh/tháng")
+        text_shape(prs.slides[4],14,f"Số điện:\n~{fmt(monthly_load,0)} kWh/tháng")
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của\nhệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
         # Slides 7 onward are intentionally kept unchanged for this phase.
