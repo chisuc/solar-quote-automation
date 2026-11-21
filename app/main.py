@@ -2275,6 +2275,96 @@ async def create_presentation_report(pid:str,request:Request):
             collage=_ppt_photo_collage(images,ratio)
             if collage: _ppt_replace_picture(slide,shape,collage)
         replace_at(3,8,real); replace_at(3,9,layout)
+
+        # Slide 10: fill the project summary table from the saved project and recalculated PTTC.
+        slide10=prs.slides[9]
+        import unicodedata
+        def norm_label(value):
+            raw=unicodedata.normalize("NFD",str(value or "").lower())
+            raw="".join(ch for ch in raw if unicodedata.category(ch)!="Mn")
+            return re.sub(r"[^a-z0-9]+"," ",raw).strip()
+        def numeric_value(value):
+            if isinstance(value,(int,float)) and not isinstance(value,bool):
+                return float(value)
+            return None
+        def metric_from_sheet(sheet,needles):
+            # Find the label in the financial template and read its result cell to the right.
+            for row in sheet.iter_rows():
+                for idx,cell in enumerate(row):
+                    label=norm_label(cell.value)
+                    if label and any(n in label for n in needles):
+                        for candidate in row[idx+1:idx+12]:
+                            v=numeric_value(candidate.value)
+                            if v is not None: return v
+                        for rr in range(cell.row+1,min(sheet.max_row,cell.row+3)+1):
+                            for cc in range(cell.column,min(sheet.max_column,cell.column+8)+1):
+                                v=numeric_value(sheet.cell(rr,cc).value)
+                                if v is not None:return v
+            return None
+        finance_wb=load_workbook(io.BytesIO(pttc_bytes),data_only=True,read_only=True)
+        try:
+            present_fin=finance_wb["present"]
+            draft_fin=finance_wb["draft "]
+            irr_value=metric_from_sheet(present_fin,["ty le hoan von noi bo irr","irr"])
+            npv_value=metric_from_sheet(present_fin,["gia tri hien tai thuan npv","npv"])
+            payback_value=metric_from_sheet(present_fin,["thoi gian hoan von khong tinh lam phat","hoan von khong tinh lam phat"])
+            # The final cumulative net cash flow is the last numeric value on the
+            # "Dòng tiền thuần LK" row in the 30-year cash-flow table.
+            cumulative_value=None
+            for row in draft_fin.iter_rows():
+                if any("dong tien thuan lk" in norm_label(c.value) for c in row if c.value is not None):
+                    nums=[numeric_value(c.value) for c in row]
+                    nums=[v for v in nums if v is not None]
+                    if nums:cumulative_value=nums[-1]
+        finally:
+            finance_wb.close()
+        load_mode=val("loadCustomerMode","")
+        load_type="Hộ dân" if load_mode=="household" else ("Nhà máy" if load_mode=="factory" else load_mode)
+        phase=val("phase","")
+        consumption_text=fmt(self_use,1)+"%"
+        payback_text=(fmt(payback_value,2)+" Năm") if payback_value is not None else ""
+        irr_text=(fmt(irr_value*100,0)+"%") if irr_value is not None and abs(irr_value)<=1 else (fmt(irr_value,0)+"%" if irr_value is not None else "")
+        npv_text=(fmt(npv_value/1000,2)+" tỷ VNĐ") if npv_value is not None else ""
+        cumulative_text=(fmt(cumulative_value/1000,1)+" tỷ VNĐ") if cumulative_value is not None else ""
+        summary_values={
+            "ten du an":project,
+            "cong suat de xuat":fmt(pv,2)+" kWp",
+            "cong suat luu tru":fmt(battery,2)+" kWh",
+            "loai phu tai":load_type or phase,
+            "ti le tieu thu dien mat troi":consumption_text,
+            "tong muc dau tu":fmt(total,0)+" đ",
+            "thoi gian hoan von khong tinh lam phat":payback_text,
+            "irr":irr_text,
+            "npv":npv_text,
+            "dong tien thuan luy ke":cumulative_text
+        }
+        summary_table=next((sh.table for sh in slide10.shapes if sh.has_table),None)
+        if summary_table is None:
+            raise ValueError("Không tìm thấy bảng tổng hợp thông tin trên slide 10.")
+        header_row=0
+        headers=[norm_label(summary_table.cell(header_row,c).text) for c in range(len(summary_table.columns))]
+        for c,h in enumerate(headers):
+            value=None
+            if "ten du an" in h:value=summary_values["ten du an"]
+            elif "cong suat de xuat" in h:value=summary_values["cong suat de xuat"]
+            elif "cong suat luu tru" in h:value=summary_values["cong suat luu tru"]
+            elif "loai phu tai" in h:value=summary_values["loai phu tai"]
+            elif "ti le tieu thu" in h:value=summary_values["ti le tieu thu dien mat troi"]
+            elif "tong muc dau tu" in h:value=summary_values["tong muc dau tu"]
+            elif "thoi gian hoan von" in h:value=summary_values["thoi gian hoan von khong tinh lam phat"]
+            elif h=="irr" or h.endswith(" irr"):value=summary_values["irr"]
+            elif h=="npv" or h.endswith(" npv"):value=summary_values["npv"]
+            elif "dong tien thuan luy ke" in h:value=summary_values["dong tien thuan luy ke"]
+            if value is not None and len(summary_table.rows)>1:
+                _ppt_set_cell_text(summary_table.cell(1,c),value)
+        # Replace the two slide-10 image frames: PV layout on the left, actual roof on the right.
+        photo_frames=[sh for sh in slide10.shapes if sh.shape_type==MSO_SHAPE_TYPE.PICTURE]
+        photo_frames.sort(key=lambda sh:sh.left)
+        if len(photo_frames)>=2:
+            for frame,photos in ((photo_frames[0],layout),(photo_frames[1],real)):
+                collage=_ppt_photo_collage(photos,frame.width/max(frame.height,1))
+                if collage:_ppt_replace_picture(slide10,frame,collage)
+
         # Slide 6: production chart rendered from the monthly series used by PTTC.
         if len(prs.slides[5].shapes)>10 and prs.slides[5].shapes[10].shape_type==MSO_SHAPE_TYPE.PICTURE:
             _ppt_replace_picture(prs.slides[5],prs.slides[5].shapes[10],_ppt_monthly_production_chart(pttc_bytes))
