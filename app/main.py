@@ -627,14 +627,28 @@ function drawLoadPvComparison(){
    const p0=val(base-1),p1=val(base),p2=val(base+1),p3=val(base+2);
    return Math.max(0,.5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t*t+(-p0+3*p1-3*p2+p3)*t*t*t));
   };
+  // Build each 30-minute battery region from the exact same Catmull-Rom
+  // Bezier segment as the green PV line. Split each hourly cubic at t=0.5
+  // so the blue lower edge cannot drift away and reveal white wedges.
+  const lerpPoint=(a,b,t)=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t});
+  const pvBezierHalf=i=>{
+   const hour=Math.floor(i/2),half=i%2;
+   const p0=pts[Math.max(0,hour-1)],p1=pts[hour],p2=pts[hour+1],p3=pts[Math.min(pts.length-1,hour+2)];
+   const c1={x:p1.x+(p2.x-p0.x)/6,y:p1.y+(p2.y-p0.y)/6};
+   const c2={x:p2.x-(p3.x-p1.x)/6,y:p2.y-(p3.y-p1.y)/6};
+   const q0=lerpPoint(p1,c1,.5),q1=lerpPoint(c1,c2,.5),q2=lerpPoint(c2,p2,.5);
+   const r0=lerpPoint(q0,q1,.5),r1=lerpPoint(q1,q2,.5),mid=lerpPoint(r0,r1,.5);
+   return half?[mid,r1,q2,p2]:[p1,q0,r0,mid];
+  };
   let batteryPath='';
   for(let i=0;i<intervals;i++){
-   const p0=pvBoundary(i),p1=pvBoundary(i+1),ratio=batteryFillRatio[i];
-   const gap0=Math.max(0,load[i]-p0),gap1=Math.max(0,load[i]-p1);
-   const top0=p0+gap0*ratio,top1=p1+gap1*ratio;
-   if(ratio>0.001&&Math.max(top0-p0,top1-p1)>0.001){
-    batteryPath+=' M'+x(i).toFixed(2)+' '+y(top0).toFixed(2)+' L'+x(i+1).toFixed(2)+' '+y(top1).toFixed(2)+' L'+x(i+1).toFixed(2)+' '+y(p1).toFixed(2)+' L'+x(i).toFixed(2)+' '+y(p0).toFixed(2)+' Z';
-   }
+   const ratio=batteryFillRatio[i];
+   if(ratio<=0.001)continue;
+   const curve=pvBezierHalf(i),loadY=y(load[i]);
+   const top=curve.map(p=>({x:p.x,y:p.y*(1-ratio)+loadY*ratio}));
+   const fmt=p=>p.x.toFixed(2)+' '+p.y.toFixed(2);
+   batteryPath+=' M'+fmt(top[0])+' C'+fmt(top[1])+','+fmt(top[2])+','+fmt(top[3])+
+    ' L'+fmt(curve[3])+' C'+fmt(curve[2])+','+fmt(curve[1])+','+fmt(curve[0])+' Z';
   }
   $('loadPvChartSvg').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;font-family:Arial,sans-serif" role="img" aria-label="Biểu đồ PV, phụ tải và công suất xả pin từ 6 giờ đến '+endHour+' giờ">'+grid+(hasPv?'<path d="'+pvArea+'" fill="#35a96f" fill-opacity=".28" stroke="none"/><path d="'+pvSmooth+'" fill="none" stroke="#168a55" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>':'')+'<path d="'+step+'" fill="none" stroke="#e53935" stroke-width="3.5" stroke-linejoin="miter" stroke-linecap="square"/>'+(household&&hasPv?'<path d="'+batteryPath+'" fill="#2878d0" fill-opacity=".30" stroke="none"/>':'')+labels+'<text x="15" y="16" fill="#687a73" font-size="11">kW</text></svg>';
   const card=(label,value,unit)=>'<div class="gsa-card"><div class="muted">'+label+'</div>'+(unit==='%'?'<h3 style="margin:7px 0;color:#16845b;white-space:nowrap">'+value.toFixed(1)+'<span style="font-size:.78em;margin-left:3px">%</span></h3>':'<h3 style="margin:7px 0;color:#16845b">'+value.toFixed(1)+'</h3><div class="muted">'+unit+'</div>')+'</div>';
@@ -2199,11 +2213,14 @@ def _ppt_load_profile_chart(payload):
         yy=int(T+ph*(1-k/4)); d.line((L,yy,W-R,yy),fill=(225,235,230),width=2)
         d.text((L-14,yy-12),f"{ymax*k/4:.1f}",font=small,fill=(90,110,101),anchor="rm")
     d.text((18,18),"kW",font=lab,fill=(80,100,92))
-    solar_pts=[xy(i*2,v) for i,v in enumerate(solar)]
+    def pv_at_position(i):
+        h=start_hour+i/2; lo=int(math.floor(h)); hi=min(23,lo+1); f=h-lo
+        return float(hourly[lo] or 0)*(1-f)+float(hourly[hi] or 0)*f
+    solar_pts=[xy(i,pv_at_position(i)) for i in range(intervals+1)]
     d.polygon(solar_pts+[(solar_pts[-1][0],T+ph),(solar_pts[0][0],T+ph)],fill=(202,232,218))
     for i in range(intervals):
         if battery_ratio[i]<=.001: continue
-        p0=float(hourly[start_hour+i//2] or 0); p1=float(hourly[min(end_hour,start_hour+(i+1)//2)] or 0)
+        p0=pv_at_position(i); p1=pv_at_position(i+1)
         top0=p0+max(0,load[i]-p0)*battery_ratio[i]; top1=p1+max(0,load[i]-p1)*battery_ratio[i]
         d.polygon([xy(i,top0),xy(i+1,top1),xy(i+1,p1),xy(i,p0)],fill=(194,218,242))
     d.line(solar_pts,fill=(20,137,83),width=5,joint="curve")
