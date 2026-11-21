@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.middleware.sessions import SessionMiddleware
 from openpyxl import load_workbook
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
 from PIL import Image, ImageOps
 import pytesseract
 from pdf2image import convert_from_bytes
@@ -232,7 +232,9 @@ function toggleFinancialAdvanced(){let el=$('financialAdvanced'),open=el.style.d
 async function applyFinancialOverrides(){try{financialOverrides=readFinancialOverrides();$('financialStatus').textContent='Đã áp dụng '+Object.keys(financialOverrides).length+' thông số điều chỉnh. Đang lưu theo dự án...';if(pid){let p=payload();p.financialOverrides=financialOverrides;await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});$('financialStatus').textContent='Đã lưu thông số PTTC. Đang tạo báo cáo theo các thay đổi...';await generateFinancialReport()}else{$('financialStatus').textContent='Hãy lưu dự án trước khi áp dụng điều chỉnh và tạo báo cáo PTTC.'}}catch(e){$('financialStatus').textContent=e.message}}
 function resetFinancialOverrides(){financialOverrides={};showFinancialOverrides();$('financialStatus').textContent='Đã xóa các điều chỉnh; sẽ sử dụng thông số mặc định của mẫu PTTC.'}
 async function uploadProjectTemplates(){if(!pid){$('projectTemplateStatus').textContent='Hãy lưu dự án trước khi chọn thư mục mẫu.';return}const files=Array.from($('projectTemplateFolder').files||[]);if(!files.length){$('projectTemplateStatus').textContent='Bạn chưa chọn thư mục hoặc thư mục đang trống.';return}const xlsx=files.filter(f=>f.name.toLowerCase().endsWith('.xlsx')),pptx=files.filter(f=>f.name.toLowerCase().endsWith('.pptx'));const errors=[];if(xlsx.length!==1)errors.push('Cần đúng 1 file PTTC khung .xlsx (hiện có '+xlsx.length+').');if(pptx.length!==1)errors.push('Cần đúng 1 file báo giá PowerPoint khung .pptx (hiện có '+pptx.length+').');if(errors.length){$('projectTemplateStatus').textContent='Thư mục chưa hợp lệ: '+errors.join(' ');return}const fd=new FormData();files.forEach(f=>fd.append('files',f,f.name));try{$('projectTemplateStatus').textContent='Đang kiểm tra cấu trúc Excel và PowerPoint...';const r=await fetch('/api/projects/'+pid+'/templates',{method:'POST',body:fd});let d={};try{d=await r.json()}catch(_){}if(!r.ok)throw Error(d.detail||'Không thể sử dụng thư mục mẫu');$('projectTemplateStatus').textContent='Thư mục hợp lệ: '+d.financial_name+' và '+d.presentation_name+' đã được gắn với dự án hiện tại.';$('projectTemplateFolderName').textContent='Đã chọn: '+(files[0].webkitRelativePath||files[0].name).split('/')[0];}catch(e){$('projectTemplateStatus').textContent='Lỗi thư mục mẫu: '+e.message}}
-async function generateFinancialReport(){if(!pid){$('financialReportStatus').textContent='Hãy lưu dự án trước khi tạo báo cáo PTTC.';return}try{$('financialReportStatus').textContent='Đang tạo file Excel PTTC...';let p=payload();let r=await api('/api/projects/'+pid+'/financial-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:p})});financialReportId=r.id;let savedPayload=payload();savedPayload.financialReportId=r.id;await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(savedPayload)});$('financialReportStatus').innerHTML='Đã tạo báo cáo: <a href="/api/files/'+r.id+'">'+esc(r.name)+'</a>';await listFiles()}catch(e){$('financialReportStatus').textContent='Không tạo được báo cáo: '+e.message}}
+async function generateFinancialReport(){if(!pid){$('financialReportStatus').textContent='Hãy lưu dự án trước khi tạo báo cáo PTTC.';return}try{$('financialReportStatus').textContent='Đang tính toán và tạo Excel + PDF (trang 5–6)...';let p=payload();let r=await api('/api/projects/'+pid+'/financial-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:p})});financialReportId=r.excel_id||r.id;let savedPayload=payload();savedPayload.financialReportId=r.excel_id||r.id;savedPayload.financialPdfId=r.pdf_id;await api('/api/projects/'+pid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(savedPayload)});$('financialReportStatus').innerHTML='Đã tạo báo cáo PTTC: <a href="/api/files/'+r.excel_id+'" download>⬇ Tải Excel</a> &nbsp; | &nbsp; <a href="#" onclick="openFinancialPdfPreview(\''+r.pdf_id+'\');return false">▣ Xem trước PDF (trang 5–6)</a>';await listFiles()}catch(e){$('financialReportStatus').textContent='Không tạo được báo cáo PTTC: '+e.message}} 
+function openFinancialPdfPreview(fid){const modal=$('financialPdfModal');$('financialPdfFrame').src='/api/files/'+fid+'/preview';$('financialPdfDownload').href='/api/files/'+fid;$('financialPdfModal').style.display='flex';document.body.style.overflow='hidden'}
+function closeFinancialPdfPreview(){const modal=$('financialPdfModal');$('financialPdfFrame').src='about:blank';modal.style.display='none';document.body.style.overflow=''}
 async function parseQuotePdf(){const f=$('quotePdfFile').files[0];if(!f){$('quotePdfStatus').textContent='Bạn hãy chọn báo giá PDF trước.';return}if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){$('quotePdfStatus').textContent='Chỉ hỗ trợ file PDF.';return}const fd=new FormData();fd.append('file',f);try{$('quotePdfStatus').textContent='Đang đọc nội dung báo giá PDF...';const resp=await fetch('/api/quote-parse',{method:'POST',body:fd});let data={};try{data=await resp.json()}catch(_){}if(!resp.ok)throw Error(data.detail||'Không đọc được báo giá.');const put=(id,v)=>{if(v!==null&&v!==undefined&&v!==''&&$(id))$(id).value=v};put('investmentSubtotal',data.subtotal);put('investmentVat',data.vat);put('investmentTotal',data.total_including_vat);put('projectName',data.customer_name);put('phone',data.customer_phone);put('address',data.site_address);put('panelBrand',data.panel_brand);put('panelW',data.panel_wp);put('panelQty',data.panel_qty);put('invModel',data.inverter_model);put('invKw',data.inverter_kw);put('phase',data.phase);put('batModel',data.battery_model);put('batKwh',data.battery_kwh);put('batQty',data.battery_qty);if(data.panel_wp&&data.panel_qty)put('pv',(Number(data.panel_wp)*Number(data.panel_qty)/1000).toFixed(3));if(data.battery_kwh&&data.battery_qty)put('batTotal',(Number(data.battery_kwh)*Number(data.battery_qty)).toFixed(2));calc();put('pre',data.subtotal);put('vatMoney',data.vat);put('grand',data.total_including_vat);const fields=[['Tổng trước VAT',data.subtotal],['Tiền VAT',data.vat],['Tổng sau VAT',data.total_including_vat],['Hãng pin',data.panel_brand],['Công suất tấm',data.panel_wp],['Số tấm',data.panel_qty],['Model inverter',data.inverter_model],['Công suất inverter',data.inverter_kw],['Số pha',data.phase],['Model pin lưu trữ',data.battery_model],['Dung lượng mỗi bộ',data.battery_kwh],['Số bộ pin',data.battery_qty]];const found=fields.filter(x=>x[1]!==null&&x[1]!==undefined&&x[1]!=='').map(x=>x[0]).join(', ');const missing=fields.filter(x=>x[1]===null||x[1]===undefined||x[1]==='').map(x=>x[0]).join(', ');$('quotePdfStatus').textContent='Đã đọc '+esc(f.name)+'. Tổng trước VAT: '+(data.subtotal==null?'chưa nhận diện':Number(data.subtotal).toLocaleString('vi-VN')+' đ')+'; VAT: '+(data.vat==null?'chưa nhận diện':Number(data.vat).toLocaleString('vi-VN')+' đ')+'; Tổng sau VAT: '+(data.total_including_vat==null?'chưa nhận diện':Number(data.total_including_vat).toLocaleString('vi-VN')+' đ')+'. Đã tự điền: '+(found||'chưa nhận diện được dữ liệu')+'. '+(missing?'Chưa nhận diện được: '+missing+'.':'Đã nhận diện đủ dữ liệu.')+' '+(data.method==='text'?'Đọc văn bản PDF':'Đọc OCR')+'.';}catch(e){$('quotePdfStatus').textContent='Không đọc được báo giá: '+e.message}}
 
 
@@ -816,7 +818,7 @@ async function listFiles(){if(!pid)return;let a=await api('/api/projects/'+pid+'
 function exportJson(){let b=new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='du-an.json';a.click()}
 async function logout(){await fetch('/logout',{method:'POST'});location='/login-page'}
 const createFolderBtn=$('createFolderBtn');if(createFolderBtn)createFolderBtn.addEventListener('click',e=>{e.preventDefault();createFolder().catch(err=>{$('folderStatus').textContent='Không tạo được: '+err.message;console.error('createFolder click failed',err)})});initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{updateTouScheduleDescription();if($('billGroupSelect').value)buildLoadProfileFromTou()});for(const id of ['plantWorkDays','plantStart','plantEnd','plantLunchStart','plantLunchEnd','plantLunchOff','plantOutsideShare'])$(id).addEventListener('change',()=>{if($('billGroupSelect').value)buildLoadProfileFromTou()});updateTouScheduleDescription();$('date').value=new Date().toISOString().slice(0,10);$('newFolderDate').value=new Date().toISOString().slice(0,10);calc();renderFolders().catch(e=>$('folderStatus').textContent=e.message);
-</script></main></body></html>"""
+</script><div id="financialPdfModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(10,20,16,.78);flex-direction:column;padding:12px"><div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px 10px 0 0;padding:10px 14px"><button class="btn alt" type="button" onclick="closeFinancialPdfPreview()">✕ Đóng</button><a id="financialPdfDownload" class="btn" href="#" download style="text-decoration:none">⬇ Tải PDF</a><span style="margin-left:auto;font-size:13px;color:#52665d">Báo cáo PTTC – Trang 5 và 6</span></div><iframe id="financialPdfFrame" title="Xem trước báo cáo PTTC PDF" style="width:100%;height:calc(100vh - 70px);border:0;background:#fff;border-radius:0 0 10px 10px"></iframe></div></main></body></html>"""
 
 @app.get("/health")
 def health():
@@ -1739,14 +1741,34 @@ async def create_financial_report(pid:str,request:Request):
     project_name=str(p.get("projectName") or p.get("customer") or "Du an").strip()
     safe_name=re.sub(r"[^A-Za-z0-9._-]+","_",project_name).strip("._")[:60] or "Du_an"
     filename=f"PTTC_{safe_name}.xlsx"
-    fid=str(uuid.uuid4()); path=storage_path(pid,fid,filename)
-    sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(path,safe="/"),data=generated,headers={"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","x-upsert":"true"})
+    pdf_filename=f"PTTC_{safe_name}_Trang_5-6.pdf"
     try:
-        sb_request("POST",db("uploads"),json={"id":fid,"pid":pid,"name":filename,"path":path},headers={"Prefer":"return=minimal"})
-    except Exception:
-        sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":[path]})
+        pdf_data=_xlsx_pages_to_pdf(generated,(5,6))
+    except HTTPException:
         raise
-    return {"id":fid,"name":filename,"recalculation":"Excel sẽ tính lại công thức khi mở file."}
+    except Exception as exc:
+        print(f"Financial PDF generation error: {type(exc).__name__}: {exc}",flush=True)
+        raise HTTPException(500,"Không thể tạo PDF xem trước PTTC: "+str(exc)[:250])
+
+    excel_id=str(uuid.uuid4()); excel_path=storage_path(pid,excel_id,filename)
+    pdf_id=str(uuid.uuid4()); pdf_path=storage_path(pid,pdf_id,pdf_filename)
+    uploaded_paths=[]
+    try:
+        sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(excel_path,safe="/"),data=generated,headers={"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","x-upsert":"true"})
+        uploaded_paths.append(excel_path)
+        sb_request("POST","/storage/v1/object/"+BUCKET+"/"+quote(pdf_path,safe="/"),data=pdf_data,headers={"Content-Type":"application/pdf","x-upsert":"true"})
+        uploaded_paths.append(pdf_path)
+        sb_request("POST",db("uploads"),json=[
+            {"id":excel_id,"pid":pid,"name":filename,"path":excel_path},
+            {"id":pdf_id,"pid":pid,"name":pdf_filename,"path":pdf_path}
+        ],headers={"Prefer":"return=minimal"})
+    except Exception:
+        if uploaded_paths:
+            sb_request("DELETE","/storage/v1/object/"+BUCKET,json={"prefixes":uploaded_paths})
+        raise
+    return {"id":excel_id,"name":filename,"excel_id":excel_id,"excel_name":filename,
+            "pdf_id":pdf_id,"pdf_name":pdf_filename,
+            "recalculation":"Đã tính lại công thức; PDF chỉ gồm trang 5 và 6."}
 
 
 PRESENTATION_TEMPLATE_PATH="system/solar-quote-template.pptx"
@@ -1787,6 +1809,36 @@ def _recalculate_xlsx(data):
         if proc.returncode!=0 or not result.exists():
             raise HTTPException(500,"Không thể tính lại công thức PTTC: "+(proc.stderr or proc.stdout or "LibreOffice error")[:250])
         return result.read_bytes()
+
+
+def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
+    """Render the calculated PTTC workbook and keep only the requested 1-based pages."""
+    import shutil, subprocess, tempfile
+    office=shutil.which("libreoffice") or shutil.which("soffice")
+    if not office:
+        raise HTTPException(503,"Máy chủ chưa có LibreOffice để xuất PDF PTTC.")
+    with tempfile.TemporaryDirectory() as td:
+        src=Path(td)/"PTTC.xlsx"
+        outdir=Path(td)/"pdf"
+        outdir.mkdir()
+        src.write_bytes(data)
+        proc=subprocess.run(
+            [office,"-env:UserInstallation=file://"+str(Path(td)/"lo-pdf-profile"),
+             "--headless","--convert-to","pdf","--outdir",str(outdir),str(src)],
+            capture_output=True,text=True,timeout=180
+        )
+        pdf_path=outdir/"PTTC.pdf"
+        if proc.returncode!=0 or not pdf_path.exists():
+            raise HTTPException(500,"Không thể xuất PDF PTTC: "+(proc.stderr or proc.stdout or "LibreOffice PDF error")[:250])
+        reader=PdfReader(str(pdf_path))
+        if len(reader.pages)<max(page_numbers):
+            raise HTTPException(422,f"File PTTC chỉ xuất được {len(reader.pages)} trang; cần có trang 5 và 6 để tạo PDF xem trước.")
+        writer=PdfWriter()
+        for page_no in page_numbers:
+            writer.add_page(reader.pages[page_no-1])
+        output=io.BytesIO()
+        writer.write(output)
+        return output.getvalue()
 
 
 def _ppt_set_paragraph_text(paragraph,text):
@@ -2375,6 +2427,20 @@ def files(pid:str,request:Request):
     auth(request)
     r=sb_request("GET",db("uploads"),params={"pid":f"eq.{pid}","select":"id,name","order":"name.asc"})
     return r.json()
+
+@app.get("/api/files/{fid}/preview")
+def preview_file(fid:str,request:Request):
+    auth(request)
+    r=sb_request("GET",db("uploads"),params={"id":f"eq.{fid}","select":"name,path"})
+    rows=r.json()
+    if not rows: raise HTTPException(404,"Không tìm thấy file")
+    item=rows[0]
+    if not str(item["name"]).lower().endswith(".pdf"):
+        raise HTTPException(415,"Chỉ hỗ trợ xem trước PDF.")
+    obj=sb_request("GET","/storage/v1/object/"+BUCKET+"/"+quote(item["path"],safe="/"))
+    return Response(content=obj.content,media_type="application/pdf",
+                    headers={"Content-Disposition":f"inline; filename*=UTF-8''{quote(item['name'])}","Cache-Control":"no-store"})
+
 
 @app.get("/api/files/{fid}")
 def download(fid:str,request:Request):
