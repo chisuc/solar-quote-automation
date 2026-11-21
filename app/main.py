@@ -2488,7 +2488,7 @@ async def create_presentation_report(pid:str,request:Request):
             # Match the table's location to the actual chart frame on this slide.
             table_left=chart_frame.left+chart_frame.width+Inches(0.18)
             table_right=prs.slide_width-Inches(0.22)
-            table_width=max(Inches(3.4),table_right-table_left)
+            table_width=max(Inches(2.6),table_right-table_left)
             # Six rows sized for the requested 16 pt bold typography.
             row_heights=[Inches(0.42),Inches(0.42),Inches(0.42),Inches(0.42),Inches(0.42),Inches(0.46)]
             table_height=sum(row_heights)
