@@ -1333,6 +1333,18 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
             total=subtotal+vat
         return subtotal,vat,total
     subtotal,vat,total=parse_amount_block(normalized)
+    # Many supplier PDFs extract the right-aligned amount column before the row labels.
+    # Recover the three summary amounts by arithmetic reconciliation across the document.
+    if subtotal is None or vat is None or total is None:
+        money_tokens=re.findall(r"(?<!\\d)(?:\\d{1,3}(?:[,. ]\\d{3})+|\\d{6,})(?!\\d)",normalized)
+        money_values=[int(re.sub(r"\\D","",v)) for v in money_tokens]
+        candidates=[]
+        for idx in range(max(0,len(money_values)-2)):
+            sub,tax,grand=money_values[idx:idx+3]
+            if sub>=100000 and tax>=0 and grand>=sub and abs(sub+tax-grand)<=max(2,grand*0.003):
+                candidates.append((sub,tax,grand))
+        if candidates:
+            subtotal,vat,total=candidates[-1]
     # Dedicated fast quotation OCR. Never reuse the multi-crop EVN bill OCR pipeline here.
     # Moderate rendering resolution and hard per-page Tesseract time limits keep this request bounded.
     if subtotal is None or vat is None or total is None:
