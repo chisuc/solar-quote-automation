@@ -825,34 +825,21 @@ initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{upda
 /* Direct project-entry handler: does not depend on inline global function binding. */
  window.startProjectDirect=function(event){
   if(event){event.preventDefault();event.stopPropagation()}
-  const status=document.getElementById('folderActionStatus')||document.getElementById('folderStatus');
-  const folder=document.getElementById('folderView');
+  const status=document.getElementById('folderActionStatus');
   const editor=document.getElementById('editorView');
-  const title=document.getElementById('folderViewTitle');
-  const date=document.getElementById('folderViewDate');
-  const currentTitle=document.getElementById('currentFolderTitle');
-  const currentDate=document.getElementById('currentFolderDate');
   try{
-   if(!folder||!editor)throw new Error('Không tìm thấy màn hình nhập dự án.');
-   if(!window.currentFolderId && !window.__solarCurrentFolderId) {
-    /* Current folder is retained by the main script; validate it via the visible title as fallback. */
-   }
-   if(typeof window.fresh==='function')window.fresh();
-   else throw new Error('Chức năng khởi tạo biểu mẫu dự án chưa sẵn sàng (fresh).');
-   if(currentTitle&&title)currentTitle.textContent=title.textContent;
-   if(currentDate&&date)currentDate.textContent=date.textContent;
-   folder.style.display='none';
-   const dash=document.getElementById('dashboardView');if(dash)dash.style.display='none';
-   editor.style.display='block';
-   const statusEl=document.getElementById('status');
-   if(statusEl)statusEl.textContent='Đang tạo dự án mới. Hãy nhập thông tin và bấm Lưu dự án.';
+   if(typeof window.startProject!=='function')throw new Error('Hàm startProject của ứng dụng chính chưa được nạp.');
+   window.startProject();
+   if(!editor||getComputedStyle(editor).display==='none')throw new Error('Hàm tạo dự án đã chạy nhưng màn hình nhập liệu chưa hiển thị.');
    if(status)status.textContent='Đã mở biểu mẫu tạo dự án mới.';
    window.scrollTo({top:0,behavior:'smooth'});
+   return true;
   }catch(error){
-   if(status)status.textContent='LỖI MỞ TẠO DỰ ÁN: '+error.message;
+   if(status)status.textContent='LỖI TẠO DỰ ÁN: '+error.message;
    console.error('startProjectDirect failed',error);
+   return false;
   }
- };
+ }
 /* Independent folder UI recovery: does not depend on the main editor script. */
 (function(){
  const nameEl=document.getElementById('newFolderName');
@@ -870,8 +857,8 @@ initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{upda
    if(actionStatus)actionStatus.textContent='Đang mở biểu mẫu tạo dự án...';
    try{
     if(typeof window.startProjectDirect!=='function')throw new Error('Chưa nạp được chức năng tạo dự án. Hãy tải lại trang.');
-    window.startProjectDirect(event);
-    if(actionStatus)actionStatus.textContent='Đã yêu cầu mở biểu mẫu tạo dự án.';
+    const opened=window.startProjectDirect(event);
+    if(!opened && actionStatus && !actionStatus.textContent.startsWith('LỖI'))actionStatus.textContent='Không mở được biểu mẫu tạo dự án.';
    }catch(error){
     if(actionStatus)actionStatus.textContent='LỖI: '+error.message;
     console.error('start project button click error',error);
