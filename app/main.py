@@ -1808,7 +1808,7 @@ async def create_financial_report(pid:str,request:Request):
         raise
     return {"id":excel_id,"name":filename,"excel_id":excel_id,"excel_name":filename,
             "pdf_id":pdf_id,"pdf_name":pdf_filename,
-            "recalculation":"Đã tính lại công thức; chỉ xuất 2 trang đang được chừa hiển thị trong sheet present."}
+            "recalculation":"Đã tính lại công thức; PDF chỉ gồm 2 trang trong vùng đang hiển thị của sheet present."}
 
 
 PRESENTATION_TEMPLATE_PATH="system/solar-quote-template.pptx"
@@ -1852,13 +1852,14 @@ def _recalculate_xlsx(data):
 
 
 def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
-    """Export only the two pages deliberately left visible in the PTTC 'present' sheet.
+    """Export only the visible print area of the PTTC 'present' sheet.
 
-    The template controls the output through hidden rows/columns and manual page
-    breaks. In the supplied template, hiding the other sheets and exporting
-    'present' produces exactly the two intended financial-analysis pages.
+    Hidden rows/columns in the template define which original pages are kept.
+    Convert that visible rectangle into the actual print area so LibreOffice
+    cannot paginate the hidden portions as extra pages.
     """
     import shutil, subprocess, tempfile
+    from openpyxl.utils import get_column_letter, range_boundaries
     office=shutil.which("libreoffice") or shutil.which("soffice")
     if not office:
         raise HTTPException(503,"Máy chủ chưa có LibreOffice để xuất PDF PTTC.")
@@ -1868,15 +1869,53 @@ def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
         if "present" not in wb.sheetnames:
             raise HTTPException(422,"File PTTC không có sheet 'present'.")
         target=wb["present"]
-        # Keep the user's print layout intact: print area, hidden rows/columns,
-        # scaling and manual page breaks are the source of truth.
+
+        # Read the template's original print range, then trim away hidden
+        # rows/columns. For the supplied template this resolves to J39:S146.
+        if target.print_area:
+            area=str(target.print_area)
+            if "!" in area:
+                area=area.rsplit("!",1)[1]
+            area=area.replace("$","").replace("'","")
+            min_col,min_row,max_col,max_row=range_boundaries(area)
+        else:
+            min_col,min_row,max_col,max_row=1,1,target.max_column,target.max_row
+
+        visible_rows=[
+            r for r in range(min_row,max_row+1)
+            if not target.row_dimensions[r].hidden
+        ]
+        visible_cols=[
+            c for c in range(min_col,max_col+1)
+            if not target.column_dimensions[get_column_letter(c)].hidden
+        ]
+        if not visible_rows or not visible_cols:
+            raise HTTPException(422,"Sheet present không có vùng in đang hiển thị.")
+
+        first_row,last_row=min(visible_rows),max(visible_rows)
+        first_col,last_col=min(visible_cols),max(visible_cols)
+        target.print_area=(
+            f"{get_column_letter(first_col)}{first_row}:"
+            f"{get_column_letter(last_col)}{last_row}"
+        )
+
+        # Export only this sheet. Keep its page breaks, margins, orientation,
+        # paper size and formatting from the user's template.
         for sheet in wb.worksheets:
             sheet.sheet_view.tabSelected=(sheet.title=="present")
-            if sheet.title=="present":
-                sheet.sheet_state="visible"
-            else:
-                sheet.sheet_state="hidden"
+            sheet.sheet_state="visible" if sheet.title=="present" else "hidden"
         wb.active=wb.sheetnames.index("present")
+
+        # The retained visible area is one page wide and two pages tall in
+        # the supplied template. Preserve manual row breaks (notably row 104).
+        target.page_setup.fitToWidth=1
+        target.page_setup.fitToHeight=2
+        if target.sheet_properties.pageSetUpPr is None:
+            from openpyxl.worksheet.properties import PageSetupProperties
+            target.sheet_properties.pageSetUpPr=PageSetupProperties(fitToPage=True)
+        else:
+            target.sheet_properties.pageSetUpPr.fitToPage=True
+
         prepared=io.BytesIO()
         wb.save(prepared)
         wb.close()
@@ -1903,7 +1942,7 @@ def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
         if len(reader.pages)!=2:
             raise HTTPException(
                 422,
-                f"Sheet present sau khi xuất đang tạo {len(reader.pages)} trang, không phải 2 trang. "
+                f"Vùng in đang hiển thị của sheet present tạo ra {len(reader.pages)} trang, không phải 2 trang. "
                 "Vui lòng kiểm tra lại các dòng/cột đang ẩn và ngắt trang trong file mẫu PTTC."
             )
         writer=PdfWriter()
