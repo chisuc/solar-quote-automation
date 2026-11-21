@@ -1883,7 +1883,7 @@ def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
             raw=page.extract_text() or ""
             raw=unicodedata.normalize("NFD",raw)
             raw="".join(ch for ch in raw if not unicodedata.combining(ch))
-            return re.sub(r"\\s+"," ",raw).upper()
+            return re.sub(r"\s+"," ",raw).upper()
 
         page_texts=[normalized_page(page) for page in reader.pages]
         start_candidates=[]
