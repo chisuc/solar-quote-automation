@@ -1808,7 +1808,7 @@ async def create_financial_report(pid:str,request:Request):
         raise
     return {"id":excel_id,"name":filename,"excel_id":excel_id,"excel_name":filename,
             "pdf_id":pdf_id,"pdf_name":pdf_filename,
-            "recalculation":"Đã tính lại công thức; PDF trích đúng 2 trang phân tích tài chính theo nội dung, không phụ thuộc số trang LibreOffice."}
+            "recalculation":"Đã tính lại công thức; chỉ xuất 2 trang đang được chừa hiển thị trong sheet present."}
 
 
 PRESENTATION_TEMPLATE_PATH="system/solar-quote-template.pptx"
@@ -1852,21 +1852,45 @@ def _recalculate_xlsx(data):
 
 
 def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
-    """Render the workbook and extract the two PTTC financial-analysis pages by content.
+    """Export only the two pages deliberately left visible in the PTTC 'present' sheet.
 
-    LibreOffice can paginate worksheets differently from Excel. Fixed PDF page
-    numbers can therefore select unrelated technical pages or blank pages.
-    Identify the financial-analysis opening and closing pages from their text.
+    The template controls the output through hidden rows/columns and manual page
+    breaks. In the supplied template, hiding the other sheets and exporting
+    'present' produces exactly the two intended financial-analysis pages.
     """
-    import shutil, subprocess, tempfile, unicodedata
+    import shutil, subprocess, tempfile
     office=shutil.which("libreoffice") or shutil.which("soffice")
     if not office:
         raise HTTPException(503,"Máy chủ chưa có LibreOffice để xuất PDF PTTC.")
+
+    try:
+        wb=load_workbook(io.BytesIO(data))
+        if "present" not in wb.sheetnames:
+            raise HTTPException(422,"File PTTC không có sheet 'present'.")
+        target=wb["present"]
+        # Keep the user's print layout intact: print area, hidden rows/columns,
+        # scaling and manual page breaks are the source of truth.
+        for sheet in wb.worksheets:
+            sheet.sheet_view.tabSelected=(sheet.title=="present")
+            if sheet.title=="present":
+                sheet.sheet_state="visible"
+            else:
+                sheet.sheet_state="hidden"
+        wb.active=wb.sheetnames.index("present")
+        prepared=io.BytesIO()
+        wb.save(prepared)
+        wb.close()
+        prepared_data=prepared.getvalue()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(422,"Không đọc được bố cục in của sheet present: "+str(exc)[:200])
+
     with tempfile.TemporaryDirectory() as td:
         src=Path(td)/"PTTC.xlsx"
         outdir=Path(td)/"pdf"
         outdir.mkdir()
-        src.write_bytes(data)
+        src.write_bytes(prepared_data)
         proc=subprocess.run(
             [office,"-env:UserInstallation=file://"+str(Path(td)/"lo-pdf-profile"),
              "--headless","--convert-to","pdf","--outdir",str(outdir),str(src)],
@@ -1876,61 +1900,15 @@ def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
         if proc.returncode!=0 or not pdf_path.exists():
             raise HTTPException(500,"Không thể xuất PDF PTTC: "+(proc.stderr or proc.stdout or "LibreOffice PDF error")[:250])
         reader=PdfReader(str(pdf_path))
-        if not reader.pages:
-            raise HTTPException(422,"File PTTC không có trang PDF để xuất.")
-
-        def normalized_page(page):
-            raw=page.extract_text() or ""
-            raw=unicodedata.normalize("NFD",raw).replace("Đ","D").replace("đ","d")
-            raw="".join(ch for ch in raw if not unicodedata.combining(ch))
-            return re.sub(r"\s+"," ",raw).upper()
-
-        page_texts=[normalized_page(page) for page in reader.pages]
-        start_candidates=[]
-        end_candidates=[]
-        for idx,txt in enumerate(page_texts):
-            has_financial_title="PHAN TICH TAI CHINH" in txt
-            has_inputs="HE SO DAU VAO" in txt or "SUAT DAU TU" in txt
-            if has_financial_title and has_inputs:
-                start_candidates.append(idx)
-            has_outputs=("HE SO DAU RA" in txt or
-                         ("TY LE HOAN VON NOI BO" in txt and "GIA TRI HIEN TAI THUAN" in txt))
-            if has_outputs:
-                end_candidates.append(idx)
-
-        selected=None
-        for first in start_candidates:
-            # Select the closing page belonging to this financial-analysis block.
-            following=[idx for idx in end_candidates if idx>first]
-            if following:
-                selected=(first,following[0])
-                break
-            # Some template versions put all output indicators on the opening page.
-            if first in end_candidates:
-                selected=(first,first)
-                break
-
-        if selected is None:
+        if len(reader.pages)!=2:
             raise HTTPException(
                 422,
-                "Không tìm thấy đủ 2 trang PHÂN TÍCH TÀI CHÍNH trong file mẫu sau khi xuất PDF. "
-                "Hệ thống đã dừng để tránh xuất nhầm trang kỹ thuật hoặc trang trắng. "
-                f"PDF trung gian có {len(reader.pages)} trang; vui lòng kiểm tra vùng in của sheet PTTC."
+                f"Sheet present sau khi xuất đang tạo {len(reader.pages)} trang, không phải 2 trang. "
+                "Vui lòng kiểm tra lại các dòng/cột đang ẩn và ngắt trang trong file mẫu PTTC."
             )
-
-        first,last=selected
-        if first==last:
-            # Preserve a two-page output only when the next page is a continuation
-            # of the cash-flow table; never append a blank or unrelated sheet.
-            next_idx=first+1
-            if next_idx<len(page_texts) and ("NAM " in page_texts[next_idx] or "CHI PHI KHAU HAO" in page_texts[next_idx]):
-                last=next_idx
-            else:
-                raise HTTPException(422,"Trang phân tích tài chính tìm thấy nhưng không có trang tiếp theo chứa bảng dòng tiền.")
-
         writer=PdfWriter()
-        writer.add_page(reader.pages[first])
-        writer.add_page(reader.pages[last])
+        writer.add_page(reader.pages[0])
+        writer.add_page(reader.pages[1])
         output=io.BytesIO()
         writer.write(output)
         return output.getvalue()
