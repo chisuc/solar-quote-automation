@@ -844,13 +844,33 @@ initLoadProfileInputs();$('touScheduleMode').addEventListener('change',()=>{upda
     '<div class="folder-card"><div class="folder-icon">📁</div><h3>'+escText(f.name)+'</h3><div class="muted">Thư mục dự án · '+escText(f.date||'')+'</div><div class="folder-actions"><button class="btn" type="button" data-open-folder="'+escText(f.id)+'">Mở thư mục</button></div></div>'
    ).join('')+'</div></section>'
   ).join('')||'<div class="panel muted">Chưa có thư mục hoặc dự án cũ trong cơ sở dữ liệu đang kết nối.</div>';
-  groupsEl.querySelectorAll('[data-open-folder]').forEach(b=>b.addEventListener('click',()=>{
-   if(typeof window.openFolder==='function')window.openFolder(b.dataset.openFolder);
-   else if(statusEl)statusEl.textContent='Danh sách đã tải, nhưng trình chỉnh sửa chưa khởi tạo. Hãy tải lại trang.';
-  }));
+  groupsEl.querySelectorAll('[data-open-folder]').forEach(b=>b.addEventListener('click',()=>openDirect(b.dataset.openFolder)));
   if(statusEl)statusEl.textContent='Đã kết nối API thư mục. Số thư mục hiển thị: '+folders.length+'.';
   return folders;
  }
+ async function openDirect(id){
+  try{
+   const folders=await request('/api/folders');
+   const folder=folders.find(x=>String(x.id)===String(id));
+   if(!folder)throw new Error('Không tìm thấy thư mục trong dữ liệu máy chủ.');
+   const projects=await request('/api/folders/'+encodeURIComponent(id)+'/projects');
+   const dash=document.getElementById('dashboardView'),view=document.getElementById('folderView');
+   if(!view||!dash)throw new Error('Không tìm thấy vùng hiển thị thư mục.');
+   const title=document.getElementById('folderViewTitle'),date=document.getElementById('folderViewDate');
+   if(title)title.textContent='📁 '+folder.name;
+   if(date)date.textContent=folder.date||'';
+   dash.style.display='none';view.style.display='block';
+   const target=document.getElementById('projects');
+   const html=projects.map(p=>'<div class="project"><span><b>'+escText(p.name||'Dự án')+'</b><br><small>'+escText(p.customer||'')+'</small></span><span><button class="btn" type="button" data-open-project="'+escText(p.id)+'">Mở dự án</button></span></div>').join('')||'<div class="muted">Thư mục chưa có dự án.</div>';
+   if(target)target.innerHTML=html;
+   view.querySelectorAll('[data-open-project]').forEach(b=>b.addEventListener('click',()=>{
+    if(typeof window.openP==='function')window.openP(b.dataset.openProject);
+    else if(statusEl)statusEl.textContent='Đã mở thư mục nhưng trình chỉnh sửa dự án chưa khởi tạo. Cần tải lại trang hoặc sửa lỗi JavaScript chính.';
+   }));
+   if(statusEl)statusEl.textContent='Đã mở "'+folder.name+'". Có '+projects.length+' dự án.';
+  }catch(error){if(statusEl)statusEl.textContent='LỖI MỞ THƯ MỤC: '+error.message;console.error('open folder API error',error)}
+ }
+ window.openFolder=openDirect;
  async function create(event){
   if(event){event.preventDefault();event.stopPropagation()}
   if(!nameEl||!statusEl)return;
