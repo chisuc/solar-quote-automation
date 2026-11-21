@@ -1339,12 +1339,12 @@ async def parse_quote_pdf(request:Request,file:UploadFile=File(...)):
     # elsewhere in the quotation from being mistaken for the investment total.
     page_triplets=[]
     for page_index,page in enumerate(reader.pages):
-        page_text=(page.extract_text() or "").replace("\\u00a0"," ")
-        page_labels=re.sub(r"[^a-z0-9]+"," ",page_text.lower())
+        page_text=(page.extract_text() or "").replace("\u00a0"," ")
+        page_labels=clean_label(page_text)
         if "tong tien" not in page_labels or "vat" not in page_labels:
             continue
-        page_tokens=re.findall(r"(?<!\\d)(?:\\d{1,3}(?:[,. ]\\d{3})+|\\d{6,})(?!\\d)",page_text)
-        page_values=[int(re.sub(r"\\D","",v)) for v in page_tokens]
+        page_tokens=re.findall(r"(?<!\d)(?:\d{1,3}(?:[,. ]\d{3})+|\d{6,})(?!\d)",page_text)
+        page_values=[int(re.sub(r"\D","",v)) for v in page_tokens]
         for token_index in range(max(0,len(page_values)-2)):
             sub,tax,grand=page_values[token_index:token_index+3]
             if sub>=100000 and tax>0 and grand>sub and abs(sub+tax-grand)<=max(2,grand*0.00001):
