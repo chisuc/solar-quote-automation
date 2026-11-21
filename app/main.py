@@ -2045,7 +2045,7 @@ def _ppt_set_cell_text(cell,text):
     _ppt_set_shape_text(cell,text)
 
 def _ppt_monthly_production_chart(workbook_bytes):
-    """Render monthly production data used by the PTTC sheet's production chart."""
+    """Render the PTTC monthly production series in the same green style as the web chart."""
     from PIL import Image, ImageDraw, ImageFont
     wb=load_workbook(io.BytesIO(workbook_bytes),data_only=True,read_only=True)
     try:
@@ -2054,34 +2054,40 @@ def _ppt_monthly_production_chart(workbook_bytes):
     finally:
         wb.close()
     import math
-    W,H=1300,1000
+    W,H=1600,900
     im=Image.new("RGB",(W,H),"white")
     d=ImageDraw.Draw(im)
     try:
-        font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",22)
-        small=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",18)
-        bold=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",22)
+        title_font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",38)
+        label_font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",23)
+        value_font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",22)
     except Exception:
-        font=small=bold=ImageFont.load_default()
-    left,right,top,bottom=115,45,55,100
-    ymax=max(500,math.ceil(max(vals)/500)*500) if vals else 3000
-    for k in range(7):
-        v=ymax*k/6
-        y=H-bottom-int((H-top-bottom)*k/6)
-        d.line((left,y,W-right,y),fill=(218,218,218),width=2)
-        d.text((left-15,y-13),f"{v:,.0f}",font=small,fill=(40,40,40),anchor="ra")
+        title_font=label_font=value_font=ImageFont.load_default()
+    green=(25,137,96)
+    dark=(35,65,55)
+    grid=(225,233,229)
+    d.text((42,28),"Biểu đồ sản lượng theo tháng",font=title_font,fill=dark)
+    left,right,top,bottom=155,55,145,115
+    max_val=max(vals) if vals else 0
+    ymax=max(500,math.ceil(max_val/500)*500)
+    plot_h=H-top-bottom
+    for k in range(5):
+        v=ymax*k/4
+        y=H-bottom-int(plot_h*k/4)
+        d.line((left,y,W-right,y),fill=grid,width=2)
+        d.text((left-22,y),f"{v:,.0f}".replace(",","."),font=label_font,fill=(95,112,105),anchor="rm")
     step=(W-left-right)/12
-    bw=step*.58
+    bw=step*.68
     for i,v in enumerate(vals):
         x=left+i*step+(step-bw)/2
-        bh=(H-top-bottom)*v/ymax
+        bh=plot_h*v/ymax if ymax else 0
         y=H-bottom-bh
-        d.rectangle((x,y,x+bw,H-bottom),fill=(247,151,68))
-        d.text((x+bw/2,y-30),f"{v:.2f}",font=small,fill=(35,35,35),anchor="mm")
-        d.text((x+bw/2,H-bottom+28),str(i+1),font=small,fill=(35,35,35),anchor="mm")
-    d.text((left,H-42),"Tháng",font=font,fill=(20,20,20))
-    d.text((22,top),"kWh",font=bold,fill=(20,20,20))
-    out=io.BytesIO(); im.save(out,format="PNG",optimize=True); return out.getvalue()
+        d.rounded_rectangle((int(x),int(y),int(x+bw),H-bottom),radius=9,fill=green)
+        d.text((x+bw/2,y-28),f"{v:,.0f}".replace(",","."),font=value_font,fill=dark,anchor="mm")
+        d.text((x+bw/2,H-bottom+42),f"T{i+1}",font=label_font,fill=(95,112,105),anchor="mm")
+    out=io.BytesIO()
+    im.save(out,format="PNG",optimize=True)
+    return out.getvalue()
 
 def _ppt_replace_picture(slide,shape,image_bytes):
     image_part,rid=slide.part.get_or_add_image_part(io.BytesIO(image_bytes))
