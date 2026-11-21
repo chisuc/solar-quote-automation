@@ -217,7 +217,15 @@ PAGE="""<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='v
  }
  window.addEventListener('error',function(e){showAppError('JavaScript',e.message+'\\n'+(e.filename||'')+':'+(e.lineno||0)+':'+(e.colno||0));});
  window.addEventListener('unhandledrejection',function(e){const r=e.reason;showAppError('Promise',r&&(r.stack||r.message)||r);});
- window.addEventListener('DOMContentLoaded',function(){setTimeout(function(){const d=document.getElementById('newFolderDate');if(d&&!d.value)showAppError('Khởi tạo bị dừng','Bước cuối ghi nhận: '+(window.__solarInitStage||'main script chưa chạy')+'. Hãy gửi ảnh thông báo này.');},1200);});
+ window.addEventListener('DOMContentLoaded',function(){setTimeout(function(){const d=document.getElementById('newFolderDate');if(d&&!d.value){
+ const ss=Array.from(document.scripts);
+ const tail=ss[ss.length-1];
+ let parse='không kiểm tra được';
+ try{if(tail&&tail.textContent)new Function(tail.textContent),parse='cú pháp hợp lệ';else parse='script cuối rỗng'}
+ catch(e){parse='LỖI CÚ PHÁP: '+e.message}
+ const info='Bước: '+(window.__solarInitStage||'main script chưa chạy')+'; script tags='+ss.length+'; script cuối='+((tail&&tail.textContent||'').length)+' ký tự; '+parse+'; có marker='+(!!(tail&&tail.textContent.includes('__solarInitStage')));
+ showAppError('Khởi tạo bị dừng',info);
+}},1200);});
 })();
 </script>
 <script>
