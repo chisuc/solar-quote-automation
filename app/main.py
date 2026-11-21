@@ -1808,7 +1808,7 @@ async def create_financial_report(pid:str,request:Request):
         raise
     return {"id":excel_id,"name":filename,"excel_id":excel_id,"excel_name":filename,
             "pdf_id":pdf_id,"pdf_name":pdf_filename,
-            "recalculation":"Đã tính lại công thức; PDF chỉ gồm trang 5 và 6."}
+            "recalculation":"Đã tính lại công thức; PDF trích đúng 2 trang phân tích tài chính theo nội dung, không phụ thuộc số trang LibreOffice."}
 
 
 PRESENTATION_TEMPLATE_PATH="system/solar-quote-template.pptx"
@@ -1852,8 +1852,13 @@ def _recalculate_xlsx(data):
 
 
 def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
-    """Render the calculated PTTC workbook and keep only the requested 1-based pages."""
-    import shutil, subprocess, tempfile
+    """Render the workbook and extract the two PTTC financial-analysis pages by content.
+
+    LibreOffice can paginate worksheets differently from Excel. Fixed PDF page
+    numbers can therefore select unrelated technical pages or blank pages.
+    Identify the financial-analysis opening and closing pages from their text.
+    """
+    import shutil, subprocess, tempfile, unicodedata
     office=shutil.which("libreoffice") or shutil.which("soffice")
     if not office:
         raise HTTPException(503,"Máy chủ chưa có LibreOffice để xuất PDF PTTC.")
@@ -1871,11 +1876,61 @@ def _xlsx_pages_to_pdf(data, page_numbers=(5, 6)):
         if proc.returncode!=0 or not pdf_path.exists():
             raise HTTPException(500,"Không thể xuất PDF PTTC: "+(proc.stderr or proc.stdout or "LibreOffice PDF error")[:250])
         reader=PdfReader(str(pdf_path))
-        if len(reader.pages)<max(page_numbers):
-            raise HTTPException(422,f"File PTTC chỉ xuất được {len(reader.pages)} trang; cần có trang 5 và 6 để tạo PDF xem trước.")
+        if not reader.pages:
+            raise HTTPException(422,"File PTTC không có trang PDF để xuất.")
+
+        def normalized_page(page):
+            raw=page.extract_text() or ""
+            raw=unicodedata.normalize("NFD",raw)
+            raw="".join(ch for ch in raw if not unicodedata.combining(ch))
+            return re.sub(r"\\s+"," ",raw).upper()
+
+        page_texts=[normalized_page(page) for page in reader.pages]
+        start_candidates=[]
+        end_candidates=[]
+        for idx,txt in enumerate(page_texts):
+            has_financial_title="PHAN TICH TAI CHINH" in txt
+            has_inputs="HE SO DAU VAO" in txt or "SUAT DAU TU" in txt
+            if has_financial_title and has_inputs:
+                start_candidates.append(idx)
+            has_outputs=("HE SO DAU RA" in txt or
+                         ("TY LE HOAN VON NOI BO" in txt and "GIA TRI HIEN TAI THUAN" in txt))
+            if has_outputs:
+                end_candidates.append(idx)
+
+        selected=None
+        for first in start_candidates:
+            # Select the closing page belonging to this financial-analysis block.
+            following=[idx for idx in end_candidates if idx>first]
+            if following:
+                selected=(first,following[0])
+                break
+            # Some template versions put all output indicators on the opening page.
+            if first in end_candidates:
+                selected=(first,first)
+                break
+
+        if selected is None:
+            raise HTTPException(
+                422,
+                "Không tìm thấy đủ 2 trang PHÂN TÍCH TÀI CHÍNH trong file mẫu sau khi xuất PDF. "
+                "Hệ thống đã dừng để tránh xuất nhầm trang kỹ thuật hoặc trang trắng. "
+                f"PDF trung gian có {len(reader.pages)} trang; vui lòng kiểm tra vùng in của sheet PTTC."
+            )
+
+        first,last=selected
+        if first==last:
+            # Preserve a two-page output only when the next page is a continuation
+            # of the cash-flow table; never append a blank or unrelated sheet.
+            next_idx=first+1
+            if next_idx<len(page_texts) and ("NAM " in page_texts[next_idx] or "CHI PHI KHAU HAO" in page_texts[next_idx]):
+                last=next_idx
+            else:
+                raise HTTPException(422,"Trang phân tích tài chính tìm thấy nhưng không có trang tiếp theo chứa bảng dòng tiền.")
+
         writer=PdfWriter()
-        for page_no in page_numbers:
-            writer.add_page(reader.pages[page_no-1])
+        writer.add_page(reader.pages[first])
+        writer.add_page(reader.pages[last])
         output=io.BytesIO()
         writer.write(output)
         return output.getvalue()
