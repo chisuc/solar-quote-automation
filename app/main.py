@@ -2255,7 +2255,26 @@ async def create_presentation_report(pid:str,request:Request):
             _ppt_set_paragraph_label_value(sizing_shape.text_frame.paragraphs[3],"Tỉ lệ tiêu thụ điện ước tính: ",f"{fmt(self_use,1)}%")
         monthly_bill=monthly_load*price
         monthly_bill_million=fmt(monthly_bill/1_000_000,1)
-        text_shape(prs.slides[4],14,f"Tiền điện trung bình:\n~{monthly_bill_million} triệu/tháng")
+        if monthly_bill_million.endswith(",0"):
+            monthly_bill_million=monthly_bill_million[:-2]
+        # Slide 3: put the monthly electricity bill in the original "Hóa đơn" line.
+        bill_line_updated=False
+        for sh in slide3.shapes:
+            if not sh.has_text_frame:
+                continue
+            for para in sh.text_frame.paragraphs:
+                if "Hóa đơn" in para.text or "hóa đơn" in para.text:
+                    _ppt_set_paragraph_label_value(
+                        para,"✓ Hóa đơn ",f"{monthly_bill_million} triệu/tháng."
+                    )
+                    bill_line_updated=True
+                    break
+            if bill_line_updated:
+                break
+        if not bill_line_updated:
+            raise ValueError("Không tìm thấy dòng 'Hóa đơn' trên slide 3 của form PowerPoint.")
+        # Slide 5 must show monthly electricity consumption (kWh), not the bill amount.
+        text_shape(prs.slides[4],14,f"Số điện:\\n~{fmt(monthly_load,0)} kWh/tháng")
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của\nhệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
         # Slides 7 onward are intentionally kept unchanged for this phase.
@@ -2363,9 +2382,27 @@ async def create_presentation_report(pid:str,request:Request):
             elif "thoi gian hoan von" in h:value=summary_values["thoi gian hoan von khong tinh lam phat"]
             elif h=="irr" or h.endswith(" irr"):value=summary_values["irr"]
             elif h=="npv" or h.endswith(" npv"):value=summary_values["npv"]
-            elif "dong tien thuan luy ke" in h:value=summary_values["dong tien thuan luy ke"]
+            elif "dong tien thuan" in h and ("luy ke" in h or "lk" in h):value=summary_values["dong tien thuan luy ke"]
             if value is not None and len(summary_table.rows)>1:
                 _ppt_set_cell_text(summary_table.cell(1,c),value)
+        # Explicitly refresh all ten data columns as a safety net for merged/wrapped
+        # template headers that python-pptx may normalize inconsistently.
+        if len(summary_table.rows)>1 and len(summary_table.columns)>=10:
+            ordered_values=[
+                summary_values["ten du an"],
+                summary_values["cong suat de xuat"],
+                summary_values["cong suat luu tru"],
+                summary_values["loai phu tai"],
+                summary_values["ti le tieu thu dien mat troi"],
+                summary_values["tong muc dau tu"],
+                summary_values["thoi gian hoan von khong tinh lam phat"],
+                summary_values["irr"],
+                summary_values["npv"],
+                summary_values["dong tien thuan luy ke"]
+            ]
+            for c,value in enumerate(ordered_values):
+                if value:
+                    _ppt_set_cell_text(summary_table.cell(1,c),value)
         # Replace the two slide-10 image frames: PV layout on the left, actual roof on the right.
         photo_frames=[sh for sh in slide10.shapes if sh.shape_type==MSO_SHAPE_TYPE.PICTURE]
         photo_frames.sort(key=lambda sh:sh.left)
