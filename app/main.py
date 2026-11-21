@@ -2488,8 +2488,9 @@ async def create_presentation_report(pid:str,request:Request):
             # Match the table's location to the actual chart frame on this slide.
             table_left=chart_frame.left+chart_frame.width+Inches(0.18)
             table_right=prs.slide_width-Inches(0.22)
-            table_width=max(Inches(2.6),table_right-table_left)
-            row_heights=[Inches(0.20),Inches(0.20),Inches(0.20),Inches(0.20),Inches(0.22),Inches(0.40)]
+            table_width=max(Inches(3.4),table_right-table_left)
+            # Six rows sized for the requested 16 pt bold typography.
+            row_heights=[Inches(0.42),Inches(0.42),Inches(0.42),Inches(0.42),Inches(0.42),Inches(0.46)]
             table_height=sum(row_heights)
             table_top=chart_frame.top+(chart_frame.height-table_height)//2
             table_top=max(Inches(0.55),min(table_top,prs.slide_height-table_height-Inches(0.25)))
@@ -2524,14 +2525,14 @@ async def create_presentation_report(pid:str,request:Request):
             total_value=fresh_table.cell(5,0)
             total_value.text="100%"
 
-            def style_ur_table_cell(cell,fill_rgb="FFFFFF",font_rgb="000000",font_pt=8.5,bold=False):
+            def style_ur_table_cell(cell,fill_rgb="FFFFFF",font_rgb="000000",font_pt=16,bold=True):
                 cell.fill.solid()
                 cell.fill.fore_color.rgb=RGBColor.from_string(fill_rgb)
                 cell.vertical_anchor=MSO_ANCHOR.MIDDLE
-                cell.margin_left=Inches(0.045)
-                cell.margin_right=Inches(0.045)
-                cell.margin_top=Inches(0.015)
-                cell.margin_bottom=Inches(0.015)
+                cell.margin_left=Inches(0.06)
+                cell.margin_right=Inches(0.06)
+                cell.margin_top=Inches(0.025)
+                cell.margin_bottom=Inches(0.025)
                 cell.text_frame.word_wrap=True
                 for paragraph in cell.text_frame.paragraphs:
                     paragraph.alignment=PP_ALIGN.CENTER
@@ -2567,10 +2568,47 @@ async def create_presentation_report(pid:str,request:Request):
                     dash.set("val","solid")
 
             for ri in range(4):
-                style_ur_table_cell(fresh_table.cell(ri,0),font_pt=8.5)
-                style_ur_table_cell(fresh_table.cell(ri,1),font_pt=8.5)
-            style_ur_table_cell(total_title,fill_rgb="FFC000",font_pt=8.5)
-            style_ur_table_cell(total_value,font_rgb="FF0000",font_pt=9.5)
+                style_ur_table_cell(fresh_table.cell(ri,0),font_pt=16,bold=True)
+                style_ur_table_cell(fresh_table.cell(ri,1),font_pt=16,bold=True)
+            style_ur_table_cell(total_title,fill_rgb="FFC000",font_pt=16,bold=True)
+            style_ur_table_cell(total_value,font_rgb="FF0000",font_pt=16,bold=True)
+
+            # Add a separate, readable legend below the chart. The tiny legend
+            # embedded in the website screenshot remains untouched.
+            legend_top=chart_frame.top+chart_frame.height+Inches(0.10)
+            legend_height=Inches(0.38)
+            if legend_top+legend_height<prs.slide_height-Inches(0.20):
+                legend=slide5.shapes.add_textbox(
+                    chart_frame.left,legend_top,chart_frame.width,legend_height
+                )
+                legend_tf=legend.text_frame
+                legend_tf.clear()
+                legend_tf.margin_left=Inches(0.02)
+                legend_tf.margin_right=Inches(0.02)
+                legend_tf.margin_top=Inches(0.015)
+                legend_tf.margin_bottom=Inches(0.015)
+                legend_tf.word_wrap=False
+                legend_p=legend_tf.paragraphs[0]
+                legend_p.alignment=PP_ALIGN.CENTER
+                legend_p.space_before=Pt(0)
+                legend_p.space_after=Pt(0)
+                for mark,label,color in [
+                    ("■ ","Phụ tải (kW)","E53935"),
+                    ("■ ","Solar (kW)","168A55"),
+                    ("■ ","Miền công suất xả pin (kW)","2878D0"),
+                ]:
+                    marker=legend_p.add_run()
+                    marker.text=mark
+                    marker.font.name="Arial"
+                    marker.font.size=Pt(12)
+                    marker.font.bold=True
+                    marker.font.color.rgb=RGBColor.from_string(color)
+                    caption=legend_p.add_run()
+                    caption.text=label+"     "
+                    caption.font.name="Arial"
+                    caption.font.size=Pt(12)
+                    caption.font.bold=True
+                    caption.font.color.rgb=RGBColor.from_string("333333")
 
         # Slide 6: radiation/production summary; keep original chart/panels if no new source imagery
         text_shape(prs.slides[5],9,f"Biểu đồ sản lượng điện mặt trời dự kiến sản xuất của\nhệ thống {fmt(pv)} kWp\nTổng sản lượng 1 năm: {fmt(annual_pttc,0)} kWh")
