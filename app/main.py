@@ -863,7 +863,7 @@ async function readBills(){
   progress.innerHTML='<span style="color:#b42318">'+escHtml(e.message)+'</span>';return;
  }
  const ok=billBatchResults.filter(x=>x.monthly_kwh&&!x.error).length,fail=billBatchResults.length-ok;
- $('billReadStatus').textContent='Hoàn tất: đọc được '+ok+'/'+files.length+' file; '+fail+' file lỗi hoặc chưa nhận diện đủ tổng kWh.';
+ $('billReadStatus').textContent='Hoàn tất: đọc được '+ok+'/'+files.length+' file; '+fail+' file lỗi hoặc chưa nhận diện đủ tổng kWh.'+(billCustomerCode?' · Mã khách hàng: '+billCustomerCode:'')+(billBatchResults.some(x=>x.customer_code)&&!billCustomerCode?' · Có nhiều mã khách hàng, vui lòng kiểm tra hóa đơn.':'');
  $('loadSizingStatus').textContent='PDF ưu tiên đọc lớp chữ, tự OCR trên trình duyệt nếu thiếu dữ liệu; ảnh được OCR trên trình duyệt. Kiểm tra số liệu từng hóa đơn trước khi tính công suất.';
 }
 $('billDayShare').addEventListener('input',()=>{calcBillNightShare();loadSizingResult=null});
@@ -1072,6 +1072,12 @@ def _bill_number(raw):
 def _bill_extract_values(text):
     normalized=re.sub(r"\s+"," ",text or "").strip()
     lines=[re.sub(r"\s+"," ",x).strip() for x in (text or "").splitlines() if x.strip()]
+    # Read each OCR line independently. Flattening the whole page can make
+    # a regex jump from a TOU label into the unrelated payment table below.
+    import unicodedata
+    def _bill_plain(value):
+        return "".join(ch for ch in unicodedata.normalize("NFD",value or "")
+                       if unicodedata.category(ch)!="Mn").replace("đ","d").replace("Đ","D").lower()
     # Extract a customer code only when it follows an explicit customer-code label.
     # If OCR does not expose a labeled code, leave it blank rather than guessing.
     customer_code=None
@@ -1086,12 +1092,6 @@ def _bill_extract_values(text):
             if re.fullmatch(r"[A-Z0-9][A-Z0-9-]{4,24}",candidate):
                 customer_code=candidate
                 break
-    # Read each OCR line independently. Flattening the whole page can make
-    # a regex jump from a TOU label into the unrelated payment table below.
-    import unicodedata
-    def _bill_plain(value):
-        return "".join(ch for ch in unicodedata.normalize("NFD",value or "")
-                       if unicodedata.category(ch)!="Mn").replace("đ","d").replace("Đ","D").lower()
     # Parse only the meter-consumption section. Some EVNSPC bills replace
     # the meter mid-cycle and repeat each TOU row for the old and new meters.
     # Sum those rows; stop before the separate tariff/payment breakdown.
